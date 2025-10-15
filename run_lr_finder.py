@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for LR finder")
     parser.add_argument("--lr_start", type=float, default=1e-7, help="Starting learning rate")
     parser.add_argument("--lr_end", type=float, default=10, help="Ending learning rate")
-    parser.add_argument("--lr_iter", type=int, default=100, help="Number of iterations")
+    parser.add_argument("--lr_iter", type=int, default=1000, help="Number of iterations")
     parser.add_argument("--lr_advanced", action="store_true", help="Use advanced LR finder")
     parser.add_argument("--lr_step_mode", type=str, default="exp", choices=["exp", "linear"], help="LR step mode")
     parser.add_argument("--lr_smooth_f", type=float, default=0.05, help="Smoothing factor")
@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
     parser.add_argument("--no_cuda", action="store_true", help="Disable CUDA")
     parser.add_argument("--streaming", action="store_true", default=True, help="Use streaming for large datasets")
-    parser.add_argument("--max_samples", type=int, default=1000, help="Maximum samples for LR finder (default: 1000)")
+    parser.add_argument("--max_samples", type=int, default=10000, help="Maximum samples for LR finder (default: 1000)")
     parser.add_argument("--use_pretrained", action="store_true", help="Use pretrained ResNet-50 weights")
     
     args = parser.parse_args()

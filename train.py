@@ -12,6 +12,8 @@ def train_epoch(
     scaler: GradScaler | None = None,
     use_amp: bool = False,
     max_grad_norm: float = 1.0,
+    scheduler=None,
+    scheduler_step_per_batch: bool = False,
 ):
     """Train the model for one epoch with optional AMP and gradient clipping."""
     model.train()
@@ -28,6 +30,10 @@ def train_epoch(
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
         optimizer.step()
+        
+        # Step scheduler per batch if requested (for OneCycleLR)
+        if scheduler is not None and scheduler_step_per_batch:
+            scheduler.step()
 
         running_loss += loss.item()
         _, predicted = output.max(1)

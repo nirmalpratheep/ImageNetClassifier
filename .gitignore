@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Training data (not needed for inference)
+data/
+*.tar.gz
+
+# Training logs
+log/
+logs/
+*.log
+
+# Model checkpoints (we'll use Git LFS for the one we need)
+snapshots_complete/*.pth
+!snapshots_complete/cifar_epoch_249.pth
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# PyCharm
+.idea/
+
+# VSCode
+.vscode/
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*~
+
+# Cache
+cache/
+cache_complete/
+cache_optimized/
+
+# Temp deployment directory
+hf_space_temp/
+

@@ -1,0 +1,24 @@
+[project]
+name = "imagenet1k-classification"
+version = "0.1.0"
+description = "ImageNet-1K classification training with LR finder"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "albumentations>=1.4",
+    "opencv-python-headless>=4.9",
+    "torch-lr-finder>=0.2.1",
+    "numpy>=1.26",
+    "tqdm>=4.66",
+    "torchsummary>=1.5",
+    "matplotlib",
+    "seaborn",
+    "scikit-learn",
+    "datasets>=2.14.0",
+    "huggingface_hub>=0.16.0",
+    "transformers>=4.30.0"
+]
+[tool.uv]
+environments = ["sys_platform == 'win32' and python_version >= '3.12'"]

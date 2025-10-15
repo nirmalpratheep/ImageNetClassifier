@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
     parser.add_argument("--no_cuda", action="store_true", help="Disable CUDA")
     parser.add_argument("--streaming", action="store_true", default=True, help="Use streaming for large datasets")
-    parser.add_argument("--max_samples", type=int, default=10000, help="Maximum samples for LR finder (default: 1000)")
+    parser.add_argument("--max_samples", type=int, default=None, help="Maximum samples for LR finder (None = full dataset)")
     parser.add_argument("--use_pretrained", action="store_true", help="Use pretrained ResNet-50 weights")
     
     args = parser.parse_args()
@@ -46,7 +46,6 @@ def main():
         "--lr_smooth_f", str(args.lr_smooth_f),
         "--lr_diverge_th", str(args.lr_diverge_th),
         "--data_dir", args.data_dir,
-        "--max_samples", str(args.max_samples),
         "--epochs", "1",  # Just run LR finder, no training
         "--no_plots"  # Disable other plots for LR finder run
     ]
@@ -62,6 +61,10 @@ def main():
     
     if args.no_cuda:
         cmd.append("--no_cuda")
+    
+    # Add max_samples only if specified (None means full dataset)
+    if args.max_samples is not None:
+        cmd.extend(["--max_samples", str(args.max_samples)])
     
     print("Running LR Finder with command:")
     print(" ".join(cmd))

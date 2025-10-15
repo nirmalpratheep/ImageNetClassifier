@@ -53,7 +53,6 @@ def run_lr_finder(args):
         "--lr_smooth_f", str(args.lr_smooth_f),
         "--lr_diverge_th", str(args.lr_diverge_th),
         "--data_dir", args.data_dir,
-        "--max_samples", str(args.max_samples),
         "--epochs", "3",  # Run for 3 epochs to find LR
         "--no_plots"  # Disable other plots for LR finder run
     ]
@@ -69,6 +68,10 @@ def run_lr_finder(args):
     
     if args.no_cuda:
         lr_finder_cmd.append("--no_cuda")
+    
+    # Add max_samples only if specified (None means full dataset)
+    if args.max_samples is not None:
+        lr_finder_cmd.extend(["--max_samples", str(args.max_samples)])
     
     print("Running LR Finder with command:")
     print(" ".join(lr_finder_cmd))
@@ -129,7 +132,6 @@ def run_full_training(args, suggested_lr):
         "--scheduler", args.scheduler,
         "--weight_decay", str(args.weight_decay),
         "--momentum", str(args.momentum),
-        "--max_samples", str(args.max_samples),
         "--snapshot_dir", os.path.join(args.output_dir, "snapshots"),
         "--plot_dir", os.path.join(args.output_dir, "plots"),
         "--plot_training",  # Enable training plots
@@ -149,6 +151,10 @@ def run_full_training(args, suggested_lr):
     
     if args.amp:
         train_cmd.append("--amp")
+    
+    # Add max_samples only if specified (None means full dataset)
+    if args.max_samples is not None:
+        train_cmd.extend(["--max_samples", str(args.max_samples)])
     
     print("Running full training with command:")
     print(" ".join(train_cmd))
@@ -174,7 +180,7 @@ def main():
     parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
     parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
     parser.add_argument("--streaming", action="store_true", default=True, help="Use streaming for large datasets")
-    parser.add_argument("--max_samples", type=int, default=10000, help="Maximum samples for LR finder")
+    parser.add_argument("--max_samples", type=int, default=None, help="Maximum samples for LR finder (None = full dataset)")
     
     # LR Finder arguments
     parser.add_argument("--lr_start", type=float, default=1e-7, help="Starting learning rate for LR finder")

@@ -67,21 +67,13 @@ def get_device(prefer_cuda: bool = True) -> torch.device:
     return torch.device("cpu")
 
 
-def build_model(model_name: str, device: torch.device, dataset_name: str = "cifar100", use_pretrained: bool = False):
-    if dataset_name.lower() == "imagenet1k" or dataset_name.lower() == "imagenet":
-        module = importlib.import_module("model_resnet50")
-        num_classes = 1000  # ImageNet has 1000 classes
-        input_size = 224
-        
-        if use_pretrained:
-            return module.load_pretrained_resnet50(device, num_classes=num_classes, input_size=input_size)
-        else:
-            return module.build_model(device, num_classes=num_classes, input_size=input_size, model_type="resnet50")
-    else:
-        module = importlib.import_module("model_resnet50")
-        num_classes = 100  # CIFAR-100 has 100 classes
-        input_size = 32
-        return module.build_model(device, num_classes=num_classes, input_size=input_size, model_type="resnet34")
+def build_model(device: torch.device):
+    """Build ResNet-50 model for ImageNet-1K."""
+    from model_resnet50 import ResNet50
+    
+    num_classes = 1000  # ImageNet-1K has 1000 classes
+    model = ResNet50(num_classes=num_classes)
+    return model.to(device)
 
 
 def save_snapshot(model, optimizer, scheduler, epoch, train_losses, train_acc, test_losses, test_acc, 
@@ -144,15 +136,13 @@ def apply_warmup_lr(optimizer, base_lr: float, warmup_factor: float):
 
 def main():
     parser = argparse.ArgumentParser(description="Image Classification Training")
-    parser.add_argument("--model", type=str, default="resnet34", help="Model to use")
-    parser.add_argument("--dataset", type=str, default="cifar100", choices=["cifar100", "imagenet1k"], help="Dataset to use")
-    parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=0.1)
-    parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
+    parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
+    parser.add_argument("--lr", type=float, default=0.1, help="Learning rate")
+    parser.add_argument("--momentum", type=float, default=0.9, help="SGD momentum")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for regularization")
-    parser.add_argument("--step_size", type=int, default=15)
-    parser.add_argument("--gamma", type=float, default=0.1)
+    parser.add_argument("--step_size", type=int, default=15, help="Step size for StepLR scheduler")
+    parser.add_argument("--gamma", type=float, default=0.1, help="Gamma for StepLR scheduler")
     parser.add_argument("--warmup_epochs", type=int, default=0, help="Number of warmup epochs (disabled)")
     parser.add_argument("--scheduler", type=str, default="cosine", choices=["cosine", "step", "onecycle"], help="Learning rate scheduler")
     
@@ -163,15 +153,12 @@ def main():
     parser.add_argument("--onecycle_three_phase", action="store_true", help="OneCycleLR: use three-phase schedule (default: False)")
     parser.add_argument("--onecycle_anneal_strategy", type=str, default="cos", choices=["cos", "linear"], help="OneCycleLR: annealing strategy (default: cos)")
     
-    parser.add_argument("--data_dir", type=str, default="./data")
-    parser.add_argument("--no_cuda", action="store_true")
+    parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
+    parser.add_argument("--no_cuda", action="store_true", help="Disable CUDA")
     
-    # Dataset streaming arguments
-    parser.add_argument("--streaming", action="store_true", default=True, help="Use streaming for large datasets (default: True)")
+    # Dataset arguments
+    parser.add_argument("--no_streaming", action="store_true", help="Use offline data from disk")
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to use (for testing/debugging)")
-    
-    # Model arguments
-    parser.add_argument("--use_pretrained", action="store_true", help="Use pretrained ResNet-50 weights from Microsoft")
     
     # LR Finder arguments
     parser.add_argument("--find_lr", action="store_true", help="Run learning rate finder")
@@ -213,20 +200,16 @@ def main():
     
     print(f"Data loading: num_workers={num_workers}, pin_memory={pin_memory}, use_cuda={use_cuda}")
     
-    print(f"Loading {args.dataset} dataset...")
-    if args.streaming:
-        print("Using streaming mode - no full dataset download required")
+    print(f"Loading ImageNet-1K dataset from {args.data_dir}...")
     if args.max_samples:
         print(f"Limited to {args.max_samples} samples per split")
     
     train_loader, test_loader = get_data_loaders(
         batch_size=args.batch_size,
-        data_dir=args.data_dir,
         num_workers=num_workers,
         pin_memory=pin_memory,
         shuffle_train=True,
-        dataset_name=args.dataset,
-        streaming=args.streaming,
+        streaming=not args.no_streaming,
         max_samples=args.max_samples,
     )
     
@@ -239,23 +222,20 @@ def main():
         print(f"Data loading failed: {e}")
         return 1
 
-    model = build_model(args.model, device, args.dataset, args.use_pretrained)
+    model = build_model(device)
     print(f"Device: {device}")
-    if args.use_pretrained:
-        print("[OK] Using pretrained ResNet-50 weights from Microsoft")
+    print(f"Model: ResNet-50 for ImageNet-1K")
     print(f"Model loaded, starting training...")
     
-    # Detect number of classes from model
-    num_classes = model.fc.out_features if hasattr(model, 'fc') else 100
-    if args.dataset.lower() == "imagenet1k":
-        dataset_name = "ImageNet1K"
-        input_size = 224
-    else:
-        dataset_name = "CIFAR-100"
-        input_size = 32
+    # ImageNet-1K configuration
+    num_classes = 1000
+    dataset_name = "ImageNet-1K"
+    input_size = 224
     
-    class_names = CIFAR100_CLASSES if num_classes == 100 else CIFAR10_CLASSES
     print(f"Dataset: {dataset_name} ({num_classes} classes)")
+    
+    # Define class names for ImageNet-1K
+    class_names = [f"class_{i}" for i in range(num_classes)]
     
     # Show model summary
     summary(model, input_size=(3, input_size, input_size))
@@ -444,7 +424,7 @@ def main():
         if should_save:
             save_snapshot(
                 model, optimizer, scheduler, epoch, train_losses, train_acc, 
-                test_losses, test_acc, args.snapshot_dir, args.model
+                test_losses, test_acc, args.snapshot_dir, "resnet50"
             )
         
         # Generate plots if requested

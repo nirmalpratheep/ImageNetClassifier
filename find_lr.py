@@ -119,6 +119,75 @@ def main():
     
     print(f"\n🎯 SUGGESTED LEARNING RATE: {suggested_lr:.2e}")
     
+    # Create detailed log file
+    log_file_path = os.path.join(args.output_dir, "lr_finder_log.txt")
+    with open(log_file_path, 'w') as log_file:
+        log_file.write("="*80 + "\n")
+        log_file.write("LEARNING RATE FINDER LOG\n")
+        log_file.write("="*80 + "\n")
+        log_file.write(f"Timestamp: {subprocess.check_output(['date'], text=True).strip() if os.name != 'nt' else 'Windows'}\n")
+        log_file.write(f"Dataset: ImageNet-1K\n")
+        log_file.write(f"Data Directory: {args.data_dir}\n")
+        log_file.write(f"Batch Size: {args.batch_size}\n")
+        log_file.write(f"Epochs: 1 (Full epoch)\n")
+        log_file.write(f"Streaming: No (Offline data)\n")
+        log_file.write(f"Pretrained: No\n")
+        log_file.write(f"LR Range: {args.lr_start:.2e} to {args.lr_end:.2e}\n")
+        log_file.write(f"LR Iterations: {args.lr_iter}\n")
+        log_file.write(f"LR Step Mode: {args.lr_step_mode}\n")
+        log_file.write(f"Smoothing Factor: {args.lr_smooth_f}\n")
+        log_file.write(f"Divergence Threshold: {args.lr_diverge_th}\n")
+        log_file.write(f"Advanced LR Finder: {args.lr_advanced}\n")
+        log_file.write("="*80 + "\n\n")
+        
+        log_file.write("COMMAND EXECUTED:\n")
+        log_file.write(" ".join(cmd) + "\n\n")
+        
+        log_file.write("STDOUT OUTPUT:\n")
+        log_file.write("-" * 40 + "\n")
+        log_file.write(result.stdout + "\n")
+        
+        if result.stderr:
+            log_file.write("\nSTDERR OUTPUT:\n")
+            log_file.write("-" * 40 + "\n")
+            log_file.write(result.stderr + "\n")
+        
+        log_file.write("\n" + "="*80 + "\n")
+        log_file.write("LR FINDER RESULTS\n")
+        log_file.write("="*80 + "\n")
+        log_file.write(f"Suggested Learning Rate: {suggested_lr:.2e}\n")
+        log_file.write(f"Return Code: {result.returncode}\n")
+        log_file.write(f"Success: {'Yes' if result.returncode == 0 else 'No'}\n")
+        log_file.write(f"Plot File: {os.path.join(args.output_dir, 'lr_finder_imagenet1k.png')}\n")
+        
+        log_file.write("\n" + "="*80 + "\n")
+        log_file.write("ANALYSIS\n")
+        log_file.write("="*80 + "\n")
+        
+        # Add analysis based on suggested LR
+        if suggested_lr < 1e-4:
+            log_file.write("⚠️  WARNING: Very low learning rate detected!\n")
+            log_file.write("   - This might indicate the model needs more training\n")
+            log_file.write("   - Consider increasing the learning rate range\n")
+            log_file.write("   - Check if the model is properly initialized\n")
+        elif suggested_lr > 1.0:
+            log_file.write("⚠️  WARNING: Very high learning rate detected!\n")
+            log_file.write("   - This might cause training instability\n")
+            log_file.write("   - Consider using a lower learning rate\n")
+            log_file.write("   - Monitor training loss for divergence\n")
+        else:
+            log_file.write("✅ Learning rate appears to be in a reasonable range\n")
+        
+        log_file.write(f"\nRecommended next steps:\n")
+        log_file.write(f"1. Use learning rate: {suggested_lr:.2e}\n")
+        log_file.write(f"2. Monitor training loss and accuracy\n")
+        log_file.write(f"3. Adjust learning rate if needed during training\n")
+        log_file.write(f"4. Consider using learning rate scheduling\n")
+        
+        log_file.write("\n" + "="*80 + "\n")
+        log_file.write("END OF LOG\n")
+        log_file.write("="*80 + "\n")
+    
     # Save the suggested LR to a file for the training script
     lr_info = {
         "suggested_lr": suggested_lr,
@@ -126,6 +195,7 @@ def main():
         "batch_size": args.batch_size,
         "lr_finder_epochs": 1,
         "plot_file": os.path.join(args.output_dir, "lr_finder_imagenet1k.png"),
+        "log_file": log_file_path,
         "timestamp": subprocess.check_output(["date"], text=True).strip() if os.name != 'nt' else "Windows"
     }
     
@@ -134,6 +204,7 @@ def main():
         json.dump(lr_info, f, indent=2)
     
     print(f"\n📊 LR Finder plot saved to: {lr_info['plot_file']}")
+    print(f"📝 Detailed log saved to: {log_file_path}")
     print(f"💾 LR info saved to: {lr_info_path}")
     print(f"\n🚀 Next step: Run training with --lr {suggested_lr:.2e}")
     print("="*70)

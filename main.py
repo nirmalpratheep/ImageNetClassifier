@@ -142,6 +142,7 @@ def main():
     
     # Dataset arguments
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to use (for testing/debugging)")
+    parser.add_argument("--val_ratio", type=float, default=0.2, help="Validation split ratio for single directory datasets (default: 0.2)")
     
     # LR Finder arguments
     parser.add_argument("--find_lr", action="store_true", help="Run learning rate finder")
@@ -203,6 +204,7 @@ def main():
         streaming=False,  # Always use offline data
         max_samples=args.max_samples,
         data_dir=args.data_dir,
+        val_ratio=args.val_ratio,
     )
     
     # Test data loading and detect number of classes

@@ -8,6 +8,10 @@ from albumentations.pytorch import ToTensorV2
 import numpy as np
 from PIL import Image
 import io
+import os
+import random
+from torch.utils.data import Dataset, Subset
+from typing import List, Tuple
 
 try:
     from datasets import load_dataset
@@ -105,6 +109,117 @@ class HuggingFaceImageNetDataset:
             raise NotImplementedError("Indexing not supported for streaming datasets")
 
 
+class ImageNetSubsetDataset(Dataset):
+    """Custom dataset for ImageNet subset with numeric class folders (e.g., 00500, 00501, etc.)"""
+    
+    def __init__(self, root_dir: str, transform=None, class_mapping: dict = None):
+        self.root_dir = root_dir
+        self.transform = transform
+        self.class_mapping = class_mapping or {}
+        
+        # Scan directory for class folders and images
+        self.samples = []
+        self.classes = []
+        self.class_to_idx = {}
+        
+        self._scan_directory()
+    
+    def _scan_directory(self):
+        """Scan the directory structure and build sample list."""
+        class_dirs = [d for d in os.listdir(self.root_dir) 
+                     if os.path.isdir(os.path.join(self.root_dir, d))]
+        
+        # Sort class directories to ensure consistent ordering
+        class_dirs.sort()
+        
+        # Map class directories to indices
+        self.classes = class_dirs
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(class_dirs)}
+        
+        # Collect all image files
+        for class_dir in class_dirs:
+            class_path = os.path.join(self.root_dir, class_dir)
+            class_idx = self.class_to_idx[class_dir]
+            
+            # Get all image files in this class directory
+            image_files = [f for f in os.listdir(class_path) 
+                          if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff'))]
+            
+            for image_file in image_files:
+                image_path = os.path.join(class_path, image_file)
+                self.samples.append((image_path, class_idx))
+        
+        print(f"Found {len(self.classes)} classes with {len(self.samples)} total samples")
+        print(f"Classes: {self.classes[:5]}{'...' if len(self.classes) > 5 else ''}")
+    
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        image_path, label = self.samples[idx]
+        
+        # Load image
+        image = Image.open(image_path).convert('RGB')
+        
+        # Apply transforms
+        if self.transform:
+            image = self.transform(image)
+        
+        return image, label
+
+
+def create_train_val_split(dataset: Dataset, val_ratio: float = 0.2, seed: int = 42) -> Tuple[Dataset, Dataset]:
+    """Create train/validation split from a single dataset."""
+    dataset_size = len(dataset)
+    indices = list(range(dataset_size))
+    
+    # Set seed for reproducible splits
+    random.seed(seed)
+    random.shuffle(indices)
+    
+    # Calculate split point
+    val_size = int(dataset_size * val_ratio)
+    train_indices = indices[val_size:]
+    val_indices = indices[:val_size]
+    
+    # Create subset datasets
+    train_dataset = Subset(dataset, train_indices)
+    val_dataset = Subset(dataset, val_indices)
+    
+    print(f"Dataset split: {len(train_dataset)} train, {len(val_dataset)} validation")
+    
+    return train_dataset, val_dataset
+
+
+def detect_data_structure(data_dir: str) -> str:
+    """Detect the structure of the data directory."""
+    if not os.path.exists(data_dir):
+        return "none"
+    
+    # Check for traditional ImageNet structure (train/val directories)
+    train_dir = os.path.join(data_dir, "train")
+    val_dir = os.path.join(data_dir, "val")
+    
+    if os.path.exists(train_dir) and os.path.exists(val_dir):
+        return "imagenet_traditional"
+    
+    # Check for numeric class directories (ImageNet subset)
+    subdirs = [d for d in os.listdir(data_dir) 
+               if os.path.isdir(os.path.join(data_dir, d))]
+    
+    # Check if directories are numeric (like 00500, 00501, etc.)
+    numeric_dirs = [d for d in subdirs if d.isdigit()]
+    
+    if len(numeric_dirs) >= 5:  # At least 5 numeric class directories
+        return "imagenet_subset"
+    
+    # Check for any class-like directories
+    if len(subdirs) >= 2:
+        return "generic_classes"
+    
+    return "unknown"
+
+
 def get_transforms():
     """Return transforms for ImageNet-1K dataset."""
     # ImageNet-1K transforms
@@ -128,19 +243,22 @@ def get_transforms():
     return AlbumentationsAdapter(train_transforms), AlbumentationsAdapter(test_transforms)
 
 
-def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str = "./data"):
+def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str = "./data", val_ratio: float = 0.2):
     """Return ImageNet-1K train/test datasets with appropriate transforms."""
     train_transforms, test_transforms = get_transforms()
 
-    # First try to load from local directory structure
-    import os
-    train_dir = os.path.join(data_dir, "train")
-    val_dir = os.path.join(data_dir, "val")
-    
-    if os.path.exists(train_dir) and os.path.exists(val_dir):
-        print(f"Loading ImageNet-1K from local directory: {data_dir}")
+    # Detect data structure
+    data_structure = detect_data_structure(data_dir)
+    print(f"Detected data structure: {data_structure}")
+
+    # Handle different data structures
+    if data_structure == "imagenet_traditional":
+        # Traditional ImageNet with train/val directories
+        train_dir = os.path.join(data_dir, "train")
+        val_dir = os.path.join(data_dir, "val")
+        
+        print(f"Loading ImageNet from traditional structure: {data_dir}")
         try:
-            # Use torchvision ImageFolder for local data
             train_dataset = datasets.ImageFolder(
                 root=train_dir,
                 transform=AlbumentationsAdapter(train_transforms)
@@ -150,7 +268,7 @@ def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str 
                 transform=AlbumentationsAdapter(test_transforms)
             )
             
-            print(f"✓ Local ImageNet-1K datasets loaded successfully")
+            print(f"✓ Traditional ImageNet datasets loaded successfully")
             print(f"✓ Train classes: {len(train_dataset.classes)}")
             print(f"✓ Train samples: {len(train_dataset)}")
             print(f"✓ Val samples: {len(test_dataset)}")
@@ -158,7 +276,6 @@ def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str 
             # Apply max_samples if specified
             if max_samples:
                 print(f"✓ Limiting to {max_samples} samples per split")
-                from torch.utils.data import Subset
                 train_indices = list(range(min(max_samples, len(train_dataset))))
                 test_indices = list(range(min(max_samples, len(test_dataset))))
                 train_dataset = Subset(train_dataset, train_indices)
@@ -167,7 +284,121 @@ def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str 
             return train_dataset, test_dataset
             
         except Exception as e:
-            print(f"Failed to load local ImageNet data: {e}")
+            print(f"Failed to load traditional ImageNet data: {e}")
+    
+    elif data_structure == "imagenet_subset":
+        # ImageNet subset with numeric class directories (your case)
+        print(f"Loading ImageNet subset from: {data_dir}")
+        try:
+            # Load the full dataset
+            full_dataset = ImageNetSubsetDataset(
+                root_dir=data_dir,
+                transform=None  # We'll apply transforms after splitting
+            )
+            
+            # Create train/val split
+            train_dataset, val_dataset = create_train_val_split(
+                full_dataset, val_ratio=val_ratio, seed=42
+            )
+            
+            # Apply transforms to the split datasets
+            # We need to wrap them to apply transforms
+            class TransformWrapper(Dataset):
+                def __init__(self, dataset, transform):
+                    self.dataset = dataset
+                    self.transform = transform
+                
+                def __len__(self):
+                    return len(self.dataset)
+                
+                def __getitem__(self, idx):
+                    image, label = self.dataset[idx]
+                    if self.transform:
+                        image = self.transform(image)
+                    return image, label
+                
+                @property
+                def classes(self):
+                    if hasattr(self.dataset, 'dataset'):
+                        return self.dataset.dataset.classes
+                    return getattr(self.dataset, 'classes', [])
+            
+            train_dataset = TransformWrapper(train_dataset, AlbumentationsAdapter(train_transforms))
+            test_dataset = TransformWrapper(val_dataset, AlbumentationsAdapter(test_transforms))
+            
+            print(f"✓ ImageNet subset loaded successfully")
+            print(f"✓ Classes: {len(full_dataset.classes)}")
+            print(f"✓ Train samples: {len(train_dataset)}")
+            print(f"✓ Val samples: {len(test_dataset)}")
+            
+            # Apply max_samples if specified
+            if max_samples:
+                print(f"✓ Limiting to {max_samples} samples per split")
+                train_indices = list(range(min(max_samples, len(train_dataset))))
+                test_indices = list(range(min(max_samples, len(test_dataset))))
+                train_dataset = Subset(train_dataset, train_indices)
+                test_dataset = Subset(test_dataset, test_indices)
+            
+            return train_dataset, test_dataset
+            
+        except Exception as e:
+            print(f"Failed to load ImageNet subset data: {e}")
+    
+    elif data_structure == "generic_classes":
+        # Generic class directories (fallback to ImageFolder)
+        print(f"Loading generic class dataset from: {data_dir}")
+        try:
+            full_dataset = datasets.ImageFolder(
+                root=data_dir,
+                transform=None
+            )
+            
+            # Create train/val split
+            train_dataset, test_dataset = create_train_val_split(
+                full_dataset, val_ratio=val_ratio, seed=42
+            )
+            
+            # Apply transforms after splitting (same wrapper as above)
+            class TransformWrapper(Dataset):
+                def __init__(self, dataset, transform):
+                    self.dataset = dataset
+                    self.transform = transform
+                
+                def __len__(self):
+                    return len(self.dataset)
+                
+                def __getitem__(self, idx):
+                    image, label = self.dataset[idx]
+                    if self.transform:
+                        image = self.transform(image)
+                    return image, label
+                
+                @property
+                def classes(self):
+                    if hasattr(self.dataset, 'dataset'):
+                        return self.dataset.dataset.classes
+                    return getattr(self.dataset, 'classes', [])
+            
+            train_dataset = TransformWrapper(train_dataset, AlbumentationsAdapter(train_transforms))
+            test_dataset = TransformWrapper(test_dataset, AlbumentationsAdapter(test_transforms))
+            
+            print(f"✓ Generic class dataset loaded successfully")
+            print(f"✓ Classes: {len(full_dataset.classes)}")
+            print(f"✓ Train samples: {len(train_dataset)}")
+            print(f"✓ Val samples: {len(test_dataset)}")
+            
+            # Apply max_samples if specified
+            if max_samples:
+                print(f"✓ Limiting to {max_samples} samples per split")
+                train_indices = list(range(min(max_samples, len(train_dataset))))
+                test_indices = list(range(min(max_samples, len(test_dataset))))
+                train_dataset = Subset(train_dataset, train_indices)
+                test_dataset = Subset(test_dataset, test_indices)
+            
+            return train_dataset, test_dataset
+            
+        except Exception as e:
+            print(f"Failed to load generic class data: {e}")
     
     # Fallback to Hugging Face datasets if available
     if DATASETS_AVAILABLE:
@@ -241,12 +472,14 @@ def get_data_loaders(
     streaming: bool = True,
     max_samples: int = None,
     data_dir: str = "./data",
+    val_ratio: float = 0.2,
 ):
     """Return ImageNet-1K train/test dataloaders with appropriate transforms."""
     train_dataset, test_dataset = get_datasets(
         streaming=streaming,
         max_samples=max_samples,
-        data_dir=data_dir
+        data_dir=data_dir,
+        val_ratio=val_ratio
     )
 
     # For streaming datasets, we need to handle them differently

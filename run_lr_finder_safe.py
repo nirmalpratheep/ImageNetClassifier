@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--lr_end", type=float, default=1.0, help="Ending learning rate (default: 1.0)")
     parser.add_argument("--lr_iter", type=int, default=200, help="Number of iterations (default: 200)")
     parser.add_argument("--max_samples", type=int, default=5000, help="Max samples for testing (default: 5000)")
+    parser.add_argument("--val_ratio", type=float, default=0.2, help="Validation split ratio (default: 0.2)")
     parser.add_argument("--lr_advanced", action="store_true", help="Use advanced LR finder")
     parser.add_argument("--lr_step_mode", type=str, default="exp", choices=["exp", "linear"], help="LR step mode")
     parser.add_argument("--lr_smooth_f", type=float, default=0.05, help="Smoothing factor")
@@ -59,6 +60,7 @@ def main():
         "--lr_diverge_th", str(args.lr_diverge_th),
         "--data_dir", args.data_dir,
         "--max_samples", str(args.max_samples),  # Limit samples for safer testing
+        "--val_ratio", str(args.val_ratio),  # Validation split ratio
         "--epochs", "1",  # Run 1 full epoch for LR finder
         "--no_plots"  # Disable other plots for LR finder run
     ]

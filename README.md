@@ -1,24 +1,24 @@
-# ImageNet-1K Classification with LR Finder
+# ImageNet-1K Learning Rate Finder
 
-A PyTorch implementation for ImageNet-1K classification using Microsoft's ResNet-50 v1.5 architecture with integrated Learning Rate Finder and streaming dataset support.
+A PyTorch implementation for finding optimal learning rates for ImageNet-1K classification using Microsoft's ResNet-50 v1.5 architecture with offline data processing.
 
 ## Features
 
 - **Microsoft ResNet-50 v1.5**: Official implementation based on [microsoft/resnet-50](https://huggingface.co/microsoft/resnet-50)
 - **Learning Rate Finder**: Integrated `torch-lr-finder` for optimal LR discovery
-- **Streaming Dataset**: Memory-efficient loading via Hugging Face datasets
-- **Flexible Training**: Support for both ImageNet-1K and CIFAR-100
-- **Pretrained Weights**: Optional loading of Microsoft's pretrained ResNet-50 weights
-- **Modern PyTorch**: Mixed precision training, gradient clipping, advanced schedulers
+- **Offline Data Processing**: Uses local ImageNet-1K data files
+- **1 Full Epoch Analysis**: Complete dataset pass for accurate LR finding
+- **Detailed Logging**: Comprehensive logs and analysis of LR findings
+- **Batch Size 256**: Optimized for ImageNet-1K training
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Model Architecture](#model-architecture)
 - [Learning Rate Finder](#learning-rate-finder)
-- [Dataset Support](#dataset-support)
-- [Training](#training)
+- [Model Architecture](#model-architecture)
+- [Data Requirements](#data-requirements)
+- [Output Files](#output-files)
 - [Command Line Arguments](#command-line-arguments)
 - [Examples](#examples)
 - [Project Structure](#project-structure)
@@ -46,59 +46,56 @@ pip install -r requirements.txt
 - `torch>=2.2` - PyTorch deep learning framework
 - `torchvision>=0.17` - Computer vision utilities
 - `torch-lr-finder>=0.2.1` - Learning rate finder
-- `datasets>=2.14.0` - Hugging Face datasets for streaming
-- `transformers>=4.30.0` - For pretrained model loading
 - `albumentations>=1.4` - Advanced image augmentation
 - `torchsummary>=1.5` - Model architecture visualization
 
 ## Quick Start
 
-### 1. Find Optimal Learning Rate
+### 1. Prepare ImageNet-1K Data
+
+Ensure you have ImageNet-1K data files in the `./data` directory with the following structure:
+```
+./data/
+├── train/
+│   ├── n01440764/
+│   ├── n01443537/
+│   └── ... (1000 class folders)
+└── val/
+    ├── n01440764/
+    ├── n01443537/
+    └── ... (1000 class folders)
+```
+
+### 2. Run Learning Rate Finder
 
 ```bash
-# Run LR finder on ImageNet-1K (streaming, limited samples)
-uv run python run_lr_finder.py --dataset imagenet1k --batch_size 32 --max_samples 1000
-
-# With advanced options
-uv run python run_lr_finder.py \
-    --dataset imagenet1k \
-    --batch_size 32 \
-    --max_samples 2000 \
-    --lr_advanced \
-    --lr_start 1e-7 \
+# Basic LR finder (1 full epoch, batch size 256)
+uv run python main.py \
+    --batch_size 256 \
+    --find_lr \
+    --lr_start 1e-07 \
     --lr_end 10 \
-    --output_dir ./lr_results
+    --lr_iter 1000 \
+    --lr_plot ./outputs/lr_finder_imagenet1k.png \
+    --data_dir ./data \
+    --epochs 1 \
+    --no_plots
+
+# Using the helper script
+uv run python run_lr_finder.py \
+    --batch_size 256 \
+    --lr_start 1e-07 \
+    --lr_end 10 \
+    --lr_iter 1000 \
+    --output_dir ./outputs
 ```
 
-### 2. Train the Model
+### 3. View Results
 
-```bash
-# Train with discovered learning rate
-uv run python main.py \
-    --dataset imagenet1k \
-    --batch_size 128 \
-    --lr 0.01 \
-    --epochs 50 \
-    --scheduler cosine
-
-# With pretrained weights
-uv run python main.py \
-    --dataset imagenet1k \
-    --use_pretrained \
-    --batch_size 128 \
-    --lr 0.001 \
-    --epochs 20
-```
-
-### 3. Test the Implementation
-
-```bash
-# Run comprehensive tests
-uv run python test_lr_finder.py
-
-# Test streaming dataset
-uv run python test_streaming.py
-```
+After completion, check the output files:
+- `./outputs/lr_finder_imagenet1k.png` - LR vs Loss plot
+- `./outputs/lr_finder_log.txt` - Detailed analysis log
+- `./outputs/suggested_lr.json` - Machine-readable results
 
 ## Model Architecture
 
@@ -151,481 +148,393 @@ uv run python main.py --dataset imagenet1k --use_pretrained
 
 ## Learning Rate Finder
 
-The LR Finder helps identify the optimal learning rate by:
-1. Starting with a very small learning rate
-2. Exponentially increasing it during training
-3. Monitoring the loss to find the steepest descent point
-4. Suggesting the optimal learning rate
+The LR Finder helps identify the optimal learning rate by running 1 full epoch on ImageNet-1K data and systematically testing different learning rates.
 
 ### How It Works
 
-Based on the [torch-lr-finder](https://github.com/davidtvs/pytorch-lr-finder) library:
+1. **Load ImageNet-1K Data**: Uses offline data from the `./data` directory
+2. **Run 1 Full Epoch**: Processes the entire training dataset once
+3. **Test LR Range**: Systematically tests learning rates from `1e-07` to `10`
+4. **Record Loss vs LR**: For each batch, records the loss and current learning rate
+5. **Generate Analysis**: Creates plot and detailed log of findings
+6. **Suggest Optimal LR**: Identifies the learning rate with steepest loss descent
 
-1. **Initialization**: Creates a copy of model and optimizer state
-2. **Range Test**: Trains for N iterations with exponentially increasing LR
-3. **Analysis**: Calculates gradients and finds the steepest descent point
-4. **Suggestion**: Returns the LR at the point of fastest learning
-5. **Reset**: Restores original model and optimizer state
+### Process Timeline
+
+```
+Start → Load Data → Run 1 Epoch (testing LRs) → Generate Plot → Save Results → Complete
+```
+
+### Key Features
+
+- **1 Full Epoch**: Complete dataset pass for accurate analysis
+- **Batch Size 256**: Optimized for ImageNet-1K training
+- **Offline Data**: Uses local data files (no streaming)
+- **Detailed Logging**: Comprehensive analysis and recommendations
+- **Visual Output**: LR vs Loss plot for easy interpretation
 
 ### Usage
 
-#### Simple LR Finder
+#### Basic LR Finder
 
 ```bash
-uv run python run_lr_finder.py --dataset imagenet1k --max_samples 1000
+uv run python main.py \
+    --batch_size 256 \
+    --find_lr \
+    --lr_start 1e-07 \
+    --lr_end 10 \
+    --lr_iter 1000 \
+    --lr_plot ./outputs/lr_finder_imagenet1k.png \
+    --data_dir ./data \
+    --epochs 1 \
+    --no_plots
 ```
 
-#### Advanced LR Finder
+#### Using Helper Script
 
 ```bash
 uv run python run_lr_finder.py \
-    --dataset imagenet1k \
-    --batch_size 64 \
-    --max_samples 2000 \
-    --lr_advanced \
-    --lr_start 1e-8 \
-    --lr_end 1 \
-    --lr_iter 200 \
-    --lr_step_mode exp \
-    --lr_smooth_f 0.1 \
-    --lr_diverge_th 3
+    --batch_size 256 \
+    --lr_start 1e-07 \
+    --lr_end 10 \
+    --lr_iter 1000 \
+    --output_dir ./outputs
 ```
 
-#### Programmatic Usage
+#### Advanced Options
 
-```python
-from lr_finder import find_lr
-
-suggested_lr, fig = find_lr(
-    model=model,
-    train_loader=train_loader,
-    optimizer=optimizer,
-    criterion=criterion,
-    device=device,
-    start_lr=1e-7,
-    end_lr=10,
-    num_iter=100,
-    plot=True,
-    save_path="lr_finder_plot.png"
-)
-
-print(f"Suggested LR: {suggested_lr}")
+```bash
+uv run python main.py \
+    --batch_size 256 \
+    --find_lr \
+    --lr_advanced \
+    --lr_start 1e-08 \
+    --lr_end 1 \
+    --lr_iter 500 \
+    --lr_step_mode exp \
+    --lr_smooth_f 0.1 \
+    --lr_diverge_th 3 \
+    --lr_plot ./outputs/advanced_lr_finder.png \
+    --data_dir ./data \
+    --epochs 1 \
+    --no_plots
 ```
 
 ### Interpreting Results
 
-The LR finder generates a plot showing:
-- **X-axis**: Learning rate (log scale)
-- **Y-axis**: Loss
-- **Red dashed line**: Suggested optimal learning rate
+The LR finder generates:
+
+1. **Plot**: `lr_finder_imagenet1k.png`
+   - X-axis: Learning rate (log scale)
+   - Y-axis: Training loss
+   - Red dashed line: Suggested optimal learning rate
+
+2. **Log File**: `lr_finder_log.txt`
+   - Detailed configuration and analysis
+   - Warnings for very low/high learning rates
+   - Recommended next steps
+
+3. **JSON File**: `suggested_lr.json`
+   - Machine-readable results
+   - Suggested learning rate value
+   - Configuration metadata
 
 **Guidelines:**
-- Use the LR at the steepest descent (before the loss plateaus)
-- Typically 1/10th of the maximum LR where loss starts to increase
-- Start training with the suggested LR or slightly lower
+- Use the LR at the steepest descent (before loss plateaus)
+- Typically 1/10th of the maximum LR where loss starts increasing
+- Start training with suggested LR or slightly lower
+- Monitor training loss for divergence
 
-## Dataset Support
+## Data Requirements
 
-### ImageNet-1K (Streaming)
+### ImageNet-1K Data Structure
 
-**Features:**
-- **No Local Download**: Streams data from Hugging Face
-- **Memory Efficient**: Loads batches on-demand
-- **1000 Classes**: Full ImageNet-1K classification
-- **1.2M Training Images**: Complete ImageNet training set
-- **50K Validation Images**: Full validation set
+The LR finder requires ImageNet-1K data to be organized in the following structure:
 
-**Usage:**
-```python
-from preprocess import get_data_loaders
-
-train_loader, test_loader = get_data_loaders(
-    batch_size=128,
-    dataset_name="imagenet1k",
-    streaming=True,
-    max_samples=None  # Use full dataset
-)
 ```
-
-**Limited Samples (for testing):**
-```bash
-# Use only 1000 samples
-uv run python main.py --dataset imagenet1k --max_samples 1000
-```
-
-**Note**: You need Hugging Face credentials to access ImageNet-1K. Set your token:
-```bash
-export HF_TOKEN=your_huggingface_token
-```
-
-### CIFAR-100
-
-**Features:**
-- **100 Classes**: 100 fine-grained categories
-- **32×32 Images**: Smaller input size
-- **50K Training**: 500 images per class
-- **10K Testing**: 100 images per class
-- **Local Download**: Automatic via torchvision
-
-**Usage:**
-```bash
-uv run python main.py --dataset cifar100 --batch_size 128
+./data/
+├── train/
+│   ├── n01440764/          # Class 1
+│   │   ├── n01440764_10026.JPEG
+│   │   ├── n01440764_10027.JPEG
+│   │   └── ...
+│   ├── n01443537/          # Class 2
+│   │   ├── n01443537_10007.JPEG
+│   │   └── ...
+│   └── ... (1000 classes total)
+└── val/
+    ├── n01440764/          # Class 1 validation
+    │   ├── ILSVRC2012_val_00000293.JPEG
+    │   └── ...
+    ├── n01443537/          # Class 2 validation
+    │   └── ...
+    └── ... (1000 classes total)
 ```
 
 ### Data Augmentation
 
-**ImageNet Transforms:**
+**Training Transforms:**
 - Resize to 256×256
 - Random crop to 224×224
 - Horizontal flip (50%)
-- Color jitter (brightness, contrast, saturation)
+- Color jitter (brightness, contrast, saturation, hue)
+- ImageNet normalization (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
+**Validation Transforms:**
+- Resize to 256×256
+- Center crop to 224×224
 - ImageNet normalization
 
-**CIFAR-100 Transforms:**
-- Pad to 36×36
-- Random crop to 32×32
-- Horizontal flip (50%)
-- ShiftScaleRotate
-- Coarse dropout (cutout)
-- Color jitter
+### Data Loading
 
-## Training
+- **Offline Processing**: Uses local data files (no streaming)
+- **Batch Size**: 256 (optimized for ImageNet-1K)
+- **Workers**: 4 (adjustable based on CPU cores)
+- **Pin Memory**: Enabled for CUDA acceleration
 
-### Basic Training
+## Output Files
 
-```bash
-uv run python main.py \
-    --dataset imagenet1k \
-    --batch_size 128 \
-    --epochs 50 \
-    --lr 0.1 \
-    --scheduler cosine
+After running the learning rate finder, the following files are generated:
+
+### 1. LR Finder Plot (`lr_finder_imagenet1k.png`)
+
+Visual representation of the learning rate analysis:
+- **X-axis**: Learning rate (log scale from 1e-07 to 10)
+- **Y-axis**: Training loss
+- **Red dashed line**: Suggested optimal learning rate
+- **Smooth curve**: Shows relationship between LR and loss
+
+### 2. Detailed Log (`lr_finder_log.txt`)
+
+Comprehensive text log containing:
+- **Configuration**: All parameters used
+- **Command executed**: Exact command that was run
+- **Output**: Complete stdout and stderr from the process
+- **Results**: Suggested learning rate and success status
+- **Analysis**: Intelligent analysis of the suggested LR
+- **Warnings**: Alerts for very low/high learning rates
+- **Recommendations**: Next steps for training
+
+### 3. JSON Results (`suggested_lr.json`)
+
+Machine-readable results file:
+```json
+{
+  "suggested_lr": 0.00123,
+  "dataset": "imagenet1k",
+  "batch_size": 256,
+  "lr_finder_epochs": 1,
+  "plot_file": "./outputs/lr_finder_imagenet1k.png",
+  "log_file": "./outputs/lr_finder_log.txt",
+  "timestamp": "2024-01-15T10:30:45"
+}
 ```
 
-### Advanced Training
+### 4. Example Log Analysis
+
+The log file includes intelligent analysis:
+
+```
+================================================================================
+ANALYSIS
+================================================================================
+✅ Learning rate appears to be in a reasonable range
+
+Recommended next steps:
+1. Use learning rate: 1.23e-03
+2. Monitor training loss and accuracy
+3. Adjust learning rate if needed during training
+4. Consider using learning rate scheduling
+```
+
+## Using Results for Training
+
+After finding the optimal learning rate, you can use it for training your model:
+
+### Example: Using Discovered Learning Rate
 
 ```bash
+# After LR finder suggests: 0.00123
 uv run python main.py \
-    --dataset imagenet1k \
     --batch_size 256 \
-    --epochs 100 \
-    --lr 0.1 \
-    --momentum 0.9 \
-    --weight_decay 1e-4 \
-    --scheduler onecycle \
-    --amp \
-    --max_grad_norm 1.0 \
-    --use_pretrained \
-    --snapshot_freq 10 \
-    --save_best
+    --lr 0.00123 \
+    --epochs 50 \
+    --scheduler cosine \
+    --data_dir ./data
 ```
 
-### Learning Rate Schedulers
+### Learning Rate Scheduling
 
-**1. Cosine Annealing** (Recommended for standard training)
+**Cosine Annealing** (Recommended):
 ```bash
 --scheduler cosine
 ```
-- Smoothly decreases LR following a cosine curve
-- Good for long training runs
-- Simple and effective
 
-**2. Step LR**
+**Step LR**:
 ```bash
 --scheduler step --step_size 30 --gamma 0.1
 ```
-- Decreases LR by factor at fixed intervals
-- Traditional approach
-- Predictable behavior
 
-**3. OneCycle LR** (Recommended for fast convergence)
+**OneCycle LR** (Fast convergence):
 ```bash
 --scheduler onecycle
 ```
-- Based on PyTorch's official [OneCycleLR](https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html)
-- Implements "Super-Convergence" technique from the paper
-- Two-phase policy (warmup + annealing) or optional three-phase
-- Steps per batch (not per epoch) for fine-grained control
-- Cycles momentum inversely to learning rate
-
-**OneCycleLR Advanced Options:**
-```bash
-uv run python main.py \
-    --dataset imagenet1k \
-    --scheduler onecycle \
-    --lr 0.1 \
-    --onecycle_pct_start 0.3 \
-    --onecycle_div_factor 25.0 \
-    --onecycle_final_div_factor 10000.0 \
-    --onecycle_anneal_strategy cos \
-    --onecycle_three_phase
-```
-
-**OneCycleLR Parameters:**
-- `--onecycle_pct_start`: Warmup phase percentage (default: 0.3 = 30%)
-- `--onecycle_div_factor`: Initial LR divisor (default: 25.0)
-- `--onecycle_final_div_factor`: Final LR divisor (default: 10000.0)
-- `--onecycle_anneal_strategy`: 'cos' or 'linear' (default: cos)
-- `--onecycle_three_phase`: Enable three-phase schedule
-
-**How OneCycleLR Works:**
-
-Based on the [PyTorch OneCycleLR documentation](https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html):
-
-1. **Phase 1 (Warmup)**: LR increases from `initial_lr` to `max_lr`
-   - Duration: `pct_start * total_steps` (default: 30% of training)
-   - Momentum decreases from `max_momentum` to `base_momentum`
-
-2. **Phase 2 (Annealing)**: LR decreases from `max_lr` to `min_lr`
-   - Duration: Remaining steps
-   - Momentum increases from `base_momentum` to `max_momentum`
-   - Uses cosine or linear annealing
-
-3. **Phase 3 (Optional)**: Further annealing to very low LR
-   - Only if `three_phase=True`
-   - Follows original paper more closely
-
-**Learning Rate Schedule:**
-- Initial LR = `max_lr / div_factor` (e.g., 0.1 / 25 = 0.004)
-- Max LR = `--lr` parameter (e.g., 0.1)
-- Min LR = `initial_lr / final_div_factor` (e.g., 0.004 / 10000 = 0.0000004)
-
-**When to Use:**
-- Fast convergence needed
-- Limited training time
-- Already found optimal max LR with LR finder
-- Training from scratch (not fine-tuning)
-
-### Mixed Precision Training
-
-Enable automatic mixed precision (AMP) for faster training:
-```bash
-uv run python main.py --dataset imagenet1k --amp
-```
-
-**Benefits:**
-- 2-3× faster training
-- Reduced memory usage
-- Same accuracy as FP32
 
 ## Command Line Arguments
 
-### Dataset Arguments
+### Core Arguments
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--dataset` | str | cifar100 | Dataset: `cifar100` or `imagenet1k` |
-| `--data_dir` | str | ./data | Data directory |
-| `--streaming` | flag | True | Use streaming for large datasets |
+| `--batch_size` | int | 256 | Batch size for LR finder |
+| `--epochs` | int | 1 | Number of epochs (always 1 for LR finder) |
+| `--data_dir` | str | ./data | ImageNet-1K data directory |
 | `--max_samples` | int | None | Limit samples (for testing) |
-
-### Model Arguments
-
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--model` | str | resnet34 | Model architecture |
-| `--use_pretrained` | flag | False | Load pretrained ResNet-50 weights |
-
-### Training Arguments
-
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--batch_size` | int | 128 | Batch size |
-| `--epochs` | int | 50 | Number of epochs |
-| `--lr` | float | 0.1 | Learning rate |
-| `--momentum` | float | 0.9 | SGD momentum |
-| `--weight_decay` | float | 1e-4 | Weight decay |
-| `--scheduler` | str | cosine | LR scheduler: `cosine`, `step`, `onecycle` |
-| `--amp` | flag | False | Enable mixed precision |
-| `--max_grad_norm` | float | 1.0 | Gradient clipping threshold |
-| `--num_workers` | int | 4 | DataLoader workers |
-
-### OneCycleLR Arguments
-
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--onecycle_pct_start` | float | 0.3 | Warmup phase percentage |
-| `--onecycle_div_factor` | float | 25.0 | Initial LR = max_lr / div_factor |
-| `--onecycle_final_div_factor` | float | 10000.0 | Min LR = initial_lr / final_div_factor |
-| `--onecycle_anneal_strategy` | str | cos | Annealing: `cos` or `linear` |
-| `--onecycle_three_phase` | flag | False | Use three-phase schedule |
+| `--no_cuda` | flag | False | Disable CUDA |
 
 ### LR Finder Arguments
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--find_lr` | flag | False | Run LR finder |
+| `--find_lr` | flag | False | Run learning rate finder |
 | `--lr_advanced` | flag | False | Use advanced LR finder |
-| `--lr_start` | float | 1e-7 | Starting LR |
-| `--lr_end` | float | 10 | Ending LR |
-| `--lr_iter` | int | 100 | Number of iterations |
+| `--lr_start` | float | 1e-7 | Starting learning rate |
+| `--lr_end` | float | 10 | Ending learning rate |
+| `--lr_iter` | int | 1000 | Number of iterations |
 | `--lr_plot` | str | ./lr_finder_plot.png | Plot save path |
 | `--lr_step_mode` | str | exp | Step mode: `exp` or `linear` |
 | `--lr_smooth_f` | float | 0.05 | Smoothing factor |
 | `--lr_diverge_th` | float | 5 | Divergence threshold |
 
-### Snapshot Arguments
+### Output Arguments
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--snapshot_dir` | str | ./snapshots | Snapshot directory |
-| `--snapshot_freq` | int | 5 | Save every N epochs |
-| `--save_best` | flag | False | Save only best models |
-| `--resume_from` | str | None | Resume from snapshot |
+| `--no_plots` | flag | False | Disable other plots (recommended for LR finder) |
 
 ## Examples
 
-### Example 1: Find LR and Train with OneCycleLR
+### Example 1: Basic LR Finder
 
 ```bash
-# Step 1: Find optimal learning rate
+# Find optimal learning rate with default settings
+uv run python main.py \
+    --batch_size 256 \
+    --find_lr \
+    --lr_start 1e-07 \
+    --lr_end 10 \
+    --lr_iter 1000 \
+    --lr_plot ./outputs/lr_finder_imagenet1k.png \
+    --data_dir ./data \
+    --epochs 1 \
+    --no_plots
+```
+
+### Example 2: Using Helper Script
+
+```bash
+# Use the simplified helper script
 uv run python run_lr_finder.py \
-    --dataset imagenet1k \
-    --batch_size 32 \
-    --max_samples 1000 \
-    --output_dir ./lr_results
-
-# Step 2: Train with discovered LR using OneCycleLR (e.g., 0.1)
-uv run python main.py \
-    --dataset imagenet1k \
-    --batch_size 128 \
-    --lr 0.1 \
-    --epochs 50 \
-    --scheduler onecycle \
-    --onecycle_pct_start 0.3 \
-    --onecycle_anneal_strategy cos \
-    --amp \
-    --save_best
+    --batch_size 256 \
+    --lr_start 1e-07 \
+    --lr_end 10 \
+    --lr_iter 1000 \
+    --output_dir ./outputs
 ```
 
-### Example 2: Fine-tune Pretrained Model
+### Example 3: Advanced LR Finder
 
 ```bash
-# Fine-tune with lower learning rate
+# Advanced LR finder with custom parameters
 uv run python main.py \
-    --dataset imagenet1k \
-    --use_pretrained \
-    --batch_size 64 \
-    --lr 0.001 \
-    --epochs 20 \
-    --scheduler cosine \
-    --weight_decay 1e-5
-```
-
-### Example 3: Resume Training
-
-```bash
-# Resume from checkpoint
-uv run python main.py \
-    --dataset imagenet1k \
-    --batch_size 128 \
-    --resume_from ./snapshots/resnet34_epoch_25.pth \
-    --epochs 100
+    --batch_size 256 \
+    --find_lr \
+    --lr_advanced \
+    --lr_start 1e-08 \
+    --lr_end 1 \
+    --lr_iter 500 \
+    --lr_step_mode exp \
+    --lr_smooth_f 0.1 \
+    --lr_diverge_th 3 \
+    --lr_plot ./outputs/advanced_lr_finder.png \
+    --data_dir ./data \
+    --epochs 1 \
+    --no_plots
 ```
 
 ### Example 4: Quick Test with Limited Data
 
 ```bash
-# Test with 100 samples
+# Test with limited samples for faster execution
 uv run python main.py \
-    --dataset imagenet1k \
-    --max_samples 100 \
-    --batch_size 16 \
-    --epochs 5 \
-    --find_lr
-```
-
-### Example 5: Complete Workflow - LR Finder + OneCycleLR
-
-```bash
-# Step 1: Find optimal max LR
-uv run python run_lr_finder.py \
-    --dataset imagenet1k \
-    --batch_size 32 \
-    --max_samples 2000 \
-    --output_dir ./lr_results
-
-# Output: Suggested learning rate: 1.23e-01
-
-# Step 2: Train with OneCycleLR using discovered max LR
-uv run python main.py \
-    --dataset imagenet1k \
-    --batch_size 256 \
-    --lr 0.123 \
-    --epochs 100 \
-    --scheduler onecycle \
-    --onecycle_pct_start 0.3 \
-    --onecycle_div_factor 25.0 \
-    --onecycle_final_div_factor 10000.0 \
-    --onecycle_anneal_strategy cos \
-    --amp \
-    --save_best \
-    --snapshot_dir ./checkpoints
-
-# This will train with:
-# - Initial LR: 0.00492 (0.123 / 25)
-# - Max LR: 0.123 (discovered from LR finder)
-# - Min LR: 0.000000492 (0.00492 / 10000)
-# - 30% warmup, 70% annealing with cosine strategy
-```
-
-### Example 6: Three-Phase OneCycleLR (Original Paper)
-
-```bash
-uv run python main.py \
-    --dataset imagenet1k \
     --batch_size 128 \
-    --lr 0.1 \
-    --epochs 90 \
-    --scheduler onecycle \
-    --onecycle_three_phase \
-    --onecycle_pct_start 0.45 \
-    --amp
+    --find_lr \
+    --max_samples 1000 \
+    --lr_start 1e-07 \
+    --lr_end 1 \
+    --lr_iter 200 \
+    --lr_plot ./outputs/test_lr_finder.png \
+    --data_dir ./data \
+    --epochs 1 \
+    --no_plots
+```
+
+### Example 5: Custom Output Directory
+
+```bash
+# Save results to custom directory
+uv run python main.py \
+    --batch_size 256 \
+    --find_lr \
+    --lr_start 1e-07 \
+    --lr_end 10 \
+    --lr_iter 1000 \
+    --lr_plot ./custom_results/my_lr_finder.png \
+    --data_dir ./data \
+    --epochs 1 \
+    --no_plots
+
+# Results will be saved to:
+# - ./custom_results/my_lr_finder.png
+# - ./custom_results/lr_finder_log.txt
+# - ./custom_results/suggested_lr.json
 ```
 
 ## Project Structure
 
 ```
 Imagenet1K/
-├── main.py                    # Main training script
-├── train.py                   # Training and evaluation functions
+├── main.py                    # Main script with LR finder
+├── find_lr.py                 # LR finder helper script
+├── run_lr_finder.py           # Simplified LR finder script
 ├── model_resnet50.py          # ResNet-50 v1.5 implementation
 ├── preprocess.py              # Data loading and augmentation
 ├── lr_finder.py               # LR finder implementation
-├── run_lr_finder.py           # LR finder helper script
-├── test_lr_finder.py          # LR finder tests
-├── test_streaming.py          # Streaming dataset tests
-├── example_lr_finder.py       # LR finder examples
+├── train.py                   # Training and evaluation functions
 ├── pyproject.toml             # Project configuration
 ├── requirements.txt           # Python dependencies
-├── LR_FINDER_USAGE.md         # Detailed LR finder guide
+├── data/                      # ImageNet-1K data directory
+│   ├── train/                 # Training images (1000 classes)
+│   └── val/                   # Validation images (1000 classes)
 └── README.md                  # This file
 ```
 
 ## Performance Tips
 
-### For Faster Training
+### For Faster LR Finding
 
-1. **Use Mixed Precision**: `--amp` (2-3× speedup)
-2. **Increase Batch Size**: Limited by GPU memory
-3. **More Workers**: `--num_workers 8` (adjust based on CPU)
-4. **Pin Memory**: Automatically enabled for CUDA
-5. **Streaming Dataset**: Reduces I/O overhead
+1. **Reduce Batch Size**: If memory limited, use `--batch_size 128`
+2. **Limit Samples**: Use `--max_samples 1000` for quick testing
+3. **Fewer Iterations**: Use `--lr_iter 500` for faster execution
+4. **More Workers**: Adjust `--num_workers` based on CPU cores
+5. **SSD Storage**: Faster data loading from SSD
 
 ### For Better Accuracy
 
-1. **Find Optimal LR**: Use LR finder before training
-2. **Use Pretrained Weights**: `--use_pretrained`
-3. **Longer Training**: More epochs with cosine scheduler
-4. **Label Smoothing**: Built-in (0.1)
-5. **Data Augmentation**: Already optimized
-
-### Memory Optimization
-
-1. **Smaller Batch Size**: Reduce if OOM
-2. **Gradient Accumulation**: Simulate larger batches
-3. **Streaming Dataset**: No full dataset in memory
-4. **Mixed Precision**: Reduces memory usage
+1. **Full Dataset**: Use complete ImageNet-1K (no `--max_samples`)
+2. **More Iterations**: Use `--lr_iter 1000` or higher
+3. **Wider LR Range**: Test from `1e-08` to `10`
+4. **Advanced Mode**: Use `--lr_advanced` for better analysis
 
 ## Troubleshooting
 
@@ -634,37 +543,45 @@ Imagenet1K/
 **1. Out of Memory (OOM)**
 ```bash
 # Reduce batch size
---batch_size 32
+--batch_size 128
 
 # Or limit samples
 --max_samples 1000
 ```
 
-**2. Slow Data Loading**
+**2. Data Not Found**
+```bash
+# Check data directory structure
+ls -la ./data/train/
+ls -la ./data/val/
+
+# Ensure proper ImageNet-1K structure
+```
+
+**3. Slow Data Loading**
 ```bash
 # Increase workers (adjust based on CPU cores)
 --num_workers 8
 
-# Use streaming
---streaming
-```
-
-**3. Hugging Face Authentication Error**
-```bash
-# Set your HF token
-export HF_TOKEN=your_token
-
-# Or login
-huggingface-cli login
+# Use SSD storage for faster I/O
 ```
 
 **4. LR Finder Takes Too Long**
 ```bash
 # Reduce iterations
---lr_iter 50
+--lr_iter 500
 
 # Use fewer samples
---max_samples 500
+--max_samples 2000
+```
+
+**5. No Plot Generated**
+```bash
+# Check output directory exists
+mkdir -p ./outputs
+
+# Ensure write permissions
+chmod 755 ./outputs
 ```
 
 ## Citation

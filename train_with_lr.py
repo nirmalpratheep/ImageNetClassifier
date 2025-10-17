@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Clean Training Script - Runs 5 epochs using OneCycleLR scheduler with validation after each epoch.
-Usage: python train_with_lr.py --dataset imagenet1k --lr 0.001 --batch_size 32
+Clean Training Script - Runs 3 epochs using OneCycleLR scheduler with the max LR found by LR finder.
+Usage: python train_with_lr.py --lr 0.001 --batch_size 256
 """
 
 import argparse
@@ -19,16 +19,13 @@ def load_suggested_lr(lr_info_path):
     return None
 
 def main():
-    parser = argparse.ArgumentParser(description="Train model for 5 epochs using OneCycleLR scheduler")
+    parser = argparse.ArgumentParser(description="Train model for 3 epochs using OneCycleLR scheduler with max LR from LR finder")
     
     # Dataset arguments
-    parser.add_argument("--dataset", type=str, default="imagenet1k", choices=["cifar100", "imagenet1k"], 
-                       help="Dataset to use")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
     parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum samples for training (None = full dataset)")
-    parser.add_argument("--use_pretrained", action="store_true", help="Use pretrained ResNet-50 weights")
     
     # Learning rate arguments
     parser.add_argument("--lr", type=float, help="Learning rate (required or will load from suggested_lr.json)")
@@ -66,16 +63,17 @@ def main():
             sys.exit(1)
     
     print("="*70)
-    print("TRAINING WITH ONECYCLELR - 5 EPOCHS")
+    print("TRAINING WITH ONECYCLELR - 3 EPOCHS")
     print("="*70)
-    print(f"Dataset: {args.dataset}")
+    print(f"Dataset: ImageNet-1K")
     print(f"Batch size: {args.batch_size}")
-    print(f"Learning rate: {learning_rate:.2e}")
+    print(f"Max Learning rate: {learning_rate:.2e}")
     print(f"Max samples: {args.max_samples if args.max_samples else 'FULL DATASET'}")
-    print(f"Use pretrained: {args.use_pretrained}")
     print(f"OneCycleLR warmup: {args.onecycle_pct_start*100:.0f}%")
     print(f"OneCycleLR div_factor: {args.onecycle_div_factor}")
     print(f"OneCycleLR final_div_factor: {args.onecycle_final_div_factor}")
+    print(f"Initial LR: {learning_rate/args.onecycle_div_factor:.2e}")
+    print(f"Min LR: {learning_rate/(args.onecycle_div_factor*args.onecycle_final_div_factor):.2e}")
     print("="*70)
     
     # Create output directory
@@ -84,10 +82,9 @@ def main():
     # Build training command
     cmd = [
         "uv", "run", "python", "main.py",
-        "--dataset", args.dataset,
         "--batch_size", str(args.batch_size),
-        "--lr", str(learning_rate),  # Use the specified/loaded LR
-        "--epochs", "5",  # Run for exactly 5 epochs
+        "--lr", str(learning_rate),  # Use the max LR from LR finder
+        "--epochs", "3",  # Run for exactly 3 epochs
         "--scheduler", "onecycle",  # Use OneCycleLR scheduler
         "--onecycle_pct_start", str(args.onecycle_pct_start),
         "--onecycle_div_factor", str(args.onecycle_div_factor),
@@ -101,16 +98,12 @@ def main():
         "--plot_training",  # Enable training plots
         "--plot_evaluation",  # Enable evaluation plots
         "--snapshot_freq", "1",  # Save snapshot every epoch
-        "--save_best",  # Save best model
-        "--streaming"  # Always use streaming
+        "--save_best"  # Save best model
     ]
     
     # Add max_samples only if specified (None means full dataset)
     if args.max_samples is not None:
         cmd.extend(["--max_samples", str(args.max_samples)])
-    
-    if args.use_pretrained:
-        cmd.append("--use_pretrained")
     
     if args.no_cuda:
         cmd.append("--no_cuda")
@@ -135,7 +128,10 @@ def main():
     print("="*70)
     print(f"📊 Training plots: {os.path.join(args.output_dir, 'plots')}")
     print(f"💾 Model snapshots: {os.path.join(args.output_dir, 'snapshots')}")
-    print(f"🎯 Used learning rate: {learning_rate:.2e}")
+    print(f"🎯 Max learning rate: {learning_rate:.2e}")
+    print(f"📈 Initial learning rate: {learning_rate/args.onecycle_div_factor:.2e}")
+    print(f"📉 Min learning rate: {learning_rate/(args.onecycle_div_factor*args.onecycle_final_div_factor):.2e}")
+    print(f"🔄 OneCycleLR warmup: {args.onecycle_pct_start*100:.0f}% of training")
     print("="*70)
 
 if __name__ == "__main__":

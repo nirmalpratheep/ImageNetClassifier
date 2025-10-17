@@ -15,6 +15,13 @@ from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR, StepLR
 from torchsummary import summary
 from lr_finder import find_lr, find_lr_advanced, LRFinder
 
+# Visualization imports
+from visualization import (
+    create_training_summary, create_evaluation_summary, 
+    evaluate_model_comprehensive, TrainingVisualizer, MetricsCalculator,
+    CIFAR10_CLASSES, CIFAR100_CLASSES
+)
+
 
 def set_seed(seed: int = 42):
     """Set random seed for reproducibility."""

@@ -20,5 +20,3 @@ dependencies = [
     "huggingface_hub>=0.16.0",
     "transformers>=4.30.0"
 ]
-[tool.uv]
-environments = ["sys_platform == 'win32' and python_version >= '3.12'"]

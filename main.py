@@ -52,11 +52,10 @@ def get_device(prefer_cuda: bool = True) -> torch.device:
     return torch.device("cpu")
 
 
-def build_model(device: torch.device):
+def build_model(device: torch.device, num_classes: int = 1000):
     """Build ResNet-50 model for ImageNet-1K."""
     from model_resnet50 import ResNet50
     
-    num_classes = 1000  # ImageNet-1K has 1000 classes
     model = ResNet50(num_classes=num_classes)
     return model.to(device)
 
@@ -203,25 +202,40 @@ def main():
         shuffle_train=True,
         streaming=False,  # Always use offline data
         max_samples=args.max_samples,
+        data_dir=args.data_dir,
     )
     
-    # Test data loading
+    # Test data loading and detect number of classes
     print("Testing data loading...")
     try:
         test_batch = next(iter(train_loader))
         print(f"Data loading successful! Batch shape: {test_batch[0].shape}, labels: {test_batch[1].shape}")
+        
+        # Detect number of classes from the dataset
+        if hasattr(train_loader.dataset, 'classes'):
+            num_classes = len(train_loader.dataset.classes)
+        elif hasattr(train_loader.dataset, 'dataset') and hasattr(train_loader.dataset.dataset, 'classes'):
+            # For Subset datasets
+            num_classes = len(train_loader.dataset.dataset.classes)
+        else:
+            # Try to infer from data
+            max_label = test_batch[1].max().item()
+            num_classes = max_label + 1
+            print(f"⚠️  Could not detect classes from dataset, inferred {num_classes} classes from max label")
+        
+        print(f"✓ Detected {num_classes} classes in dataset")
+        
     except Exception as e:
         print(f"Data loading failed: {e}")
         return 1
 
-    model = build_model(device)
+    model = build_model(device, num_classes=num_classes)
     print(f"Device: {device}")
-    print(f"Model: ResNet-50 for ImageNet-1K")
+    print(f"Model: ResNet-50 for {num_classes} classes")
     print(f"Model loaded, starting training...")
     
-    # ImageNet-1K configuration
-    num_classes = 1000
-    dataset_name = "ImageNet-1K"
+    # Dataset configuration  
+    dataset_name = f"ImageNet-{num_classes}K" if num_classes == 1000 else f"ImageNet-{num_classes}-classes"
     input_size = 224
     
     print(f"Dataset: {dataset_name} ({num_classes} classes)")

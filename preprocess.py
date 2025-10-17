@@ -128,10 +128,48 @@ def get_transforms():
     return AlbumentationsAdapter(train_transforms), AlbumentationsAdapter(test_transforms)
 
 
-def get_datasets(streaming: bool = True, max_samples: int = None):
+def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str = "./data"):
     """Return ImageNet-1K train/test datasets with appropriate transforms."""
     train_transforms, test_transforms = get_transforms()
 
+    # First try to load from local directory structure
+    import os
+    train_dir = os.path.join(data_dir, "train")
+    val_dir = os.path.join(data_dir, "val")
+    
+    if os.path.exists(train_dir) and os.path.exists(val_dir):
+        print(f"Loading ImageNet-1K from local directory: {data_dir}")
+        try:
+            # Use torchvision ImageFolder for local data
+            train_dataset = datasets.ImageFolder(
+                root=train_dir,
+                transform=AlbumentationsAdapter(train_transforms)
+            )
+            test_dataset = datasets.ImageFolder(
+                root=val_dir, 
+                transform=AlbumentationsAdapter(test_transforms)
+            )
+            
+            print(f"✓ Local ImageNet-1K datasets loaded successfully")
+            print(f"✓ Train classes: {len(train_dataset.classes)}")
+            print(f"✓ Train samples: {len(train_dataset)}")
+            print(f"✓ Val samples: {len(test_dataset)}")
+            
+            # Apply max_samples if specified
+            if max_samples:
+                print(f"✓ Limiting to {max_samples} samples per split")
+                from torch.utils.data import Subset
+                train_indices = list(range(min(max_samples, len(train_dataset))))
+                test_indices = list(range(min(max_samples, len(test_dataset))))
+                train_dataset = Subset(train_dataset, train_indices)
+                test_dataset = Subset(test_dataset, test_indices)
+            
+            return train_dataset, test_dataset
+            
+        except Exception as e:
+            print(f"Failed to load local ImageNet data: {e}")
+    
+    # Fallback to Hugging Face datasets if available
     if DATASETS_AVAILABLE:
         try:
             print("Loading ImageNet-1K from Hugging Face datasets...")
@@ -202,11 +240,13 @@ def get_data_loaders(
     shuffle_train: bool = True,
     streaming: bool = True,
     max_samples: int = None,
+    data_dir: str = "./data",
 ):
     """Return ImageNet-1K train/test dataloaders with appropriate transforms."""
     train_dataset, test_dataset = get_datasets(
         streaming=streaming,
-        max_samples=max_samples
+        max_samples=max_samples,
+        data_dir=data_dir
     )
 
     # For streaming datasets, we need to handle them differently

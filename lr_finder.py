@@ -187,18 +187,27 @@ def find_lr(
     if plot:
         try:
             # Use the built-in plot method from torch-lr-finder
-            fig = lr_finder.plot(skip_start=10, skip_end=5)
+            fig_result = lr_finder.plot(skip_start=10, skip_end=5)
             
-            # Add suggested LR line
-            ax = fig.gca()
-            ax.axvline(x=suggested_lr, color='red', linestyle='--', alpha=0.7, 
-                      label=f'Suggested LR: {suggested_lr:.2e}')
-            ax.legend()
+            # Handle both tuple and figure returns
+            if isinstance(fig_result, tuple):
+                fig = fig_result[0] if fig_result else None
+            else:
+                fig = fig_result
             
-            # Save if path provided
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"LR finder plot saved to: {save_path}")
+            if fig is not None:
+                # Add suggested LR line
+                ax = fig.gca()
+                ax.axvline(x=suggested_lr, color='red', linestyle='--', alpha=0.7, 
+                          label=f'Suggested LR: {suggested_lr:.2e}')
+                ax.legend()
+                
+                # Save if path provided
+                if save_path:
+                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                    print(f"LR finder plot saved to: {save_path}")
+            else:
+                print("Warning: Could not create matplotlib figure")
                 
         except Exception as e:
             print(f"Warning: Could not create plot: {e}")
@@ -369,20 +378,29 @@ def find_lr_advanced(
     fig = None
     if plot:
         try:
-            fig = lr_finder.plot(skip_start=10, skip_end=5)
+            fig_result = lr_finder.plot(skip_start=10, skip_end=5)
             
-            # Add suggested LR lines
-            ax = fig.gca()
-            ax.axvline(x=min_loss_lr, color='blue', linestyle=':', alpha=0.7, 
-                      label=f'Min Loss LR: {min_loss_lr:.2e}')
-            ax.axvline(x=steepest_lr, color='red', linestyle='--', alpha=0.7, 
-                      label=f'Steepest LR: {steepest_lr:.2e}')
-            ax.legend()
+            # Handle both tuple and figure returns
+            if isinstance(fig_result, tuple):
+                fig = fig_result[0] if fig_result else None
+            else:
+                fig = fig_result
             
-            # Save if path provided
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"LR finder plot saved to: {save_path}")
+            if fig is not None:
+                # Add suggested LR lines
+                ax = fig.gca()
+                ax.axvline(x=min_loss_lr, color='blue', linestyle=':', alpha=0.7, 
+                          label=f'Min Loss LR: {min_loss_lr:.2e}')
+                ax.axvline(x=steepest_lr, color='red', linestyle='--', alpha=0.7, 
+                          label=f'Steepest LR: {steepest_lr:.2e}')
+                ax.legend()
+                
+                # Save if path provided
+                if save_path:
+                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                    print(f"LR finder plot saved to: {save_path}")
+            else:
+                print("Warning: Could not create matplotlib figure")
                 
         except Exception as e:
             print(f"Warning: Could not create plot: {e}")

@@ -18,5 +18,6 @@ dependencies = [
     "scikit-learn",
     "datasets>=2.14.0",
     "huggingface_hub>=0.16.0",
-    "transformers>=4.30.0"
+    "transformers>=4.30.0",
+    "wandb>=0.16.0"
 ]

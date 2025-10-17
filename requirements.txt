@@ -26,6 +26,3 @@ gradio>=4.0.0
 datasets>=2.14.0
 huggingface_hub>=0.16.0
 transformers>=4.30.0
-
-# Experiment tracking
-wandb>=0.16.0

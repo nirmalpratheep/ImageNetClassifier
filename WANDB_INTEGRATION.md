@@ -12,13 +12,14 @@ The project now includes full wandb integration for:
 
 ## Installation
 
-Make sure wandb is installed:
+The project uses `uv` package manager with dependencies managed in `pyproject.toml`. Wandb is already included as a dependency.
 
 ```bash
-# Using uv
+# Install all dependencies including wandb
 uv sync
 
-# Or using pip
+# Or if using pip with requirements.txt
+pip install -r requirements.txt
 pip install wandb>=0.16.0
 ```
 

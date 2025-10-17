@@ -23,7 +23,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+data/
 # Training data (not needed for inference)
 data/
 *.tar.gz

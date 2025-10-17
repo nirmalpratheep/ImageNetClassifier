@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Clean LR Finder Script - Runs 3 epochs to find optimal learning rate and plots the result.
-Usage: python find_lr.py --dataset imagenet1k --batch_size 32
+Clean LR Finder Script - Runs 1 full epoch to find optimal learning rate and plots the result.
+Usage: python find_lr.py --data_dir ./data --batch_size 256
 """
 
 import argparse
@@ -29,15 +29,12 @@ def extract_lr_from_output(output_text):
     return None
 
 def main():
-    parser = argparse.ArgumentParser(description="Find optimal learning rate using 3 epochs")
+    parser = argparse.ArgumentParser(description="Find optimal learning rate using 1 full epoch")
     
     # Dataset arguments
-    parser.add_argument("--dataset", type=str, default="imagenet1k", choices=["cifar100", "imagenet1k"], 
-                       help="Dataset to use")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
     parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
-    parser.add_argument("--max_samples", type=int, default=None, help="Maximum samples for LR finder (None = full dataset)")
     parser.add_argument("--use_pretrained", action="store_true", help="Use pretrained ResNet-50 weights")
     
     # LR Finder specific arguments
@@ -55,11 +52,11 @@ def main():
     args = parser.parse_args()
     
     print("="*70)
-    print("LEARNING RATE FINDER - 3 EPOCHS")
+    print("LEARNING RATE FINDER - 1 FULL EPOCH")
     print("="*70)
-    print(f"Dataset: {args.dataset}")
+    print(f"Dataset: ImageNet-1K")
+    print(f"Data directory: {args.data_dir}")
     print(f"Batch size: {args.batch_size}")
-    print(f"Max samples: {args.max_samples if args.max_samples else 'FULL DATASET'}")
     print(f"LR range: {args.lr_start:.2e} to {args.lr_end:.2e}")
     print(f"LR iterations: {args.lr_iter}")
     print(f"Use pretrained: {args.use_pretrained}")
@@ -71,25 +68,21 @@ def main():
     # Build LR finder command
     cmd = [
         "uv", "run", "python", "main.py",
-        "--dataset", args.dataset,
+        "--dataset", "imagenet1k",
         "--batch_size", str(args.batch_size),
         "--find_lr",
         "--lr_start", str(args.lr_start),
         "--lr_end", str(args.lr_end),
         "--lr_iter", str(args.lr_iter),
-        "--lr_plot", os.path.join(args.output_dir, f"lr_finder_{args.dataset}.png"),
+        "--lr_plot", os.path.join(args.output_dir, "lr_finder_imagenet1k.png"),
         "--lr_step_mode", args.lr_step_mode,
         "--lr_smooth_f", str(args.lr_smooth_f),
         "--lr_diverge_th", str(args.lr_diverge_th),
         "--data_dir", args.data_dir,
-        "--epochs", "3",  # Run for exactly 3 epochs
-        "--streaming",  # Always use streaming
+        "--epochs", "1",  # Run for exactly 1 full epoch
+        "--no_streaming",  # Use offline data from disk
         "--no_plots"  # Disable other plots
     ]
-    
-    # Add max_samples only if specified (None means full dataset)
-    if args.max_samples is not None:
-        cmd.extend(["--max_samples", str(args.max_samples)])
     
     if args.use_pretrained:
         cmd.append("--use_pretrained")
@@ -129,10 +122,10 @@ def main():
     # Save the suggested LR to a file for the training script
     lr_info = {
         "suggested_lr": suggested_lr,
-        "dataset": args.dataset,
+        "dataset": "imagenet1k",
         "batch_size": args.batch_size,
-        "lr_finder_epochs": 3,
-        "plot_file": os.path.join(args.output_dir, f"lr_finder_{args.dataset}.png"),
+        "lr_finder_epochs": 1,
+        "plot_file": os.path.join(args.output_dir, "lr_finder_imagenet1k.png"),
         "timestamp": subprocess.check_output(["date"], text=True).strip() if os.name != 'nt' else "Windows"
     }
     

@@ -30,7 +30,6 @@ def main():
     # Build command
     cmd = [
         "uv", "run", "python", "main.py",
-        "--dataset", "imagenet1k",
         "--batch_size", str(args.batch_size),
         "--find_lr",
         "--lr_start", str(args.lr_start),
@@ -42,7 +41,6 @@ def main():
         "--lr_diverge_th", str(args.lr_diverge_th),
         "--data_dir", args.data_dir,
         "--epochs", "1",  # Run 1 full epoch for LR finder
-        "--no_streaming",  # Use offline data from disk
         "--no_plots"  # Disable other plots for LR finder run
     ]
     

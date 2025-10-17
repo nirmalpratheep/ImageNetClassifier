@@ -14,36 +14,6 @@ from torch.amp import GradScaler
 from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR, StepLR
 from torchsummary import summary
 from lr_finder import find_lr, find_lr_advanced, LRFinder
-# Visualization imports - create dummy classes if module doesn't exist
-try:
-    from visualization import (
-        create_training_summary, create_evaluation_summary, 
-        evaluate_model_comprehensive, TrainingVisualizer, MetricsCalculator,
-        CIFAR10_CLASSES, CIFAR100_CLASSES
-    )
-except ImportError:
-    print("Warning: visualization module not found. Creating dummy implementations.")
-    
-    # Dummy classes for compatibility
-    class MetricsCalculator:
-        def __init__(self, num_classes):
-            self.num_classes = num_classes
-        def calculate_metrics(self, targets, predictions, probabilities):
-            return {'accuracy': 0.0, 'precision_macro': 0.0, 'recall_macro': 0.0, 'f1_macro': 0.0}
-    
-    def create_training_summary(*args, **kwargs):
-        pass
-    
-    def create_evaluation_summary(*args, **kwargs):
-        pass
-    
-    def evaluate_model_comprehensive(*args, **kwargs):
-        return {'targets': [], 'predictions': [], 'probabilities': []}
-    
-    CIFAR10_CLASSES = [f"class_{i}" for i in range(10)]
-    CIFAR100_CLASSES = [f"class_{i}" for i in range(100)]
-
-
 
 
 def set_seed(seed: int = 42):
@@ -157,7 +127,6 @@ def main():
     parser.add_argument("--no_cuda", action="store_true", help="Disable CUDA")
     
     # Dataset arguments
-    parser.add_argument("--no_streaming", action="store_true", help="Use offline data from disk")
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to use (for testing/debugging)")
     
     # LR Finder arguments
@@ -209,7 +178,7 @@ def main():
         num_workers=num_workers,
         pin_memory=pin_memory,
         shuffle_train=True,
-        streaming=not args.no_streaming,
+        streaming=False,  # Always use offline data
         max_samples=args.max_samples,
     )
     

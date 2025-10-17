@@ -80,7 +80,6 @@ def main():
         "--lr_diverge_th", str(args.lr_diverge_th),
         "--data_dir", args.data_dir,
         "--epochs", "1",  # Run for exactly 1 full epoch
-        "--no_streaming",  # Use offline data from disk
         "--no_plots"  # Disable other plots
     ]
     

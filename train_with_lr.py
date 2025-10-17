@@ -45,6 +45,14 @@ def main():
     parser.add_argument("--no_cuda", action="store_true", help="Disable CUDA")
     parser.add_argument("--amp", action="store_true", help="Enable mixed precision training")
     
+    # Wandb arguments
+    parser.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb_project", type=str, default="imagenet-classification", help="Wandb project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="Wandb run name")
+    parser.add_argument("--wandb_tags", type=str, nargs="*", default=None, help="Wandb tags")
+    parser.add_argument("--wandb_group", type=str, default=None, help="Wandb group name")
+    parser.add_argument("--wandb_notes", type=str, default=None, help="Notes for the wandb run")
+    
     args = parser.parse_args()
     
     # Determine learning rate
@@ -110,6 +118,20 @@ def main():
     
     if args.amp:
         cmd.append("--amp")
+    
+    # Add wandb arguments if enabled
+    if args.use_wandb:
+        cmd.extend(["--use_wandb"])
+        if args.wandb_project:
+            cmd.extend(["--wandb_project", args.wandb_project])
+        if args.wandb_run_name:
+            cmd.extend(["--wandb_run_name", args.wandb_run_name])
+        if args.wandb_tags:
+            cmd.extend(["--wandb_tags"] + args.wandb_tags)
+        if args.wandb_group:
+            cmd.extend(["--wandb_group", args.wandb_group])
+        if args.wandb_notes:
+            cmd.extend(["--wandb_notes", args.wandb_notes])
     
     print("Running training...")
     print("Command:", " ".join(cmd))

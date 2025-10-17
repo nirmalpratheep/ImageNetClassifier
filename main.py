@@ -22,6 +22,14 @@ from visualization import (
     CIFAR10_CLASSES, CIFAR100_CLASSES
 )
 
+# Import wandb for experiment tracking (optional)
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None
+
 
 def set_seed(seed: int = 42):
     """Set random seed for reproducibility."""
@@ -164,6 +172,14 @@ def main():
     parser.add_argument("--amp", action="store_true", help="Enable mixed precision training (AMP)")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Max gradient norm for clipping")
     parser.add_argument("--num_workers", type=int, default=4, help="DataLoader workers")
+    
+    # Wandb experiment tracking arguments
+    parser.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb_project", type=str, default="imagenet-classification", help="Wandb project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="Wandb run name (auto-generated if not specified)")
+    parser.add_argument("--wandb_tags", type=str, nargs="*", default=None, help="Wandb tags (space-separated)")
+    parser.add_argument("--wandb_group", type=str, default=None, help="Wandb group name for organizing related runs")
+    parser.add_argument("--wandb_notes", type=str, default=None, help="Notes/description for the wandb run")
 
     args = parser.parse_args()
     set_seed(42)
@@ -241,7 +257,11 @@ def main():
                     smooth_f=args.lr_smooth_f,
                     diverge_th=args.lr_diverge_th,
                     plot=True,
-                    save_path=args.lr_plot
+                    save_path=args.lr_plot,
+                    use_wandb=args.use_wandb,
+                    wandb_run_name=args.wandb_run_name,
+                    wandb_project=args.wandb_project,
+                    wandb_tags=args.wandb_tags
                 )
             else:
                 suggested_lr, fig = find_lr(
@@ -255,7 +275,11 @@ def main():
                     num_iter=args.lr_iter,
                     plot=True,
                     save_path=args.lr_plot,
-                    use_amp=args.amp
+                    use_amp=args.amp,
+                    use_wandb=args.use_wandb,
+                    wandb_run_name=args.wandb_run_name,
+                    wandb_project=args.wandb_project,
+                    wandb_tags=args.wandb_tags
                 )
             
             print(f"\nSuggested learning rate: {suggested_lr:.2e}")
@@ -348,6 +372,67 @@ def main():
         print(f"Resuming training from epoch {start_epoch}")
 
     scaler = GradScaler('cuda', enabled=args.amp)
+    
+    # Initialize wandb for main training (only if not running LR finder)
+    if args.use_wandb and WANDB_AVAILABLE and not args.find_lr:
+        # Generate run name if not provided
+        run_name = args.wandb_run_name or f"imagenet_resnet50_{args.scheduler}_lr_{args.lr:.0e}_bs_{args.batch_size}"
+        
+        # Prepare config
+        wandb_config = {
+            "model": "ResNet-50 v1.5",
+            "dataset": "ImageNet-1K",
+            "batch_size": args.batch_size,
+            "epochs": args.epochs,
+            "learning_rate": args.lr,
+            "optimizer": "SGD",
+            "momentum": args.momentum,
+            "weight_decay": args.weight_decay,
+            "scheduler": args.scheduler,
+            "device": str(device),
+            "amp_enabled": args.amp,
+            "max_grad_norm": args.max_grad_norm,
+            "num_classes": num_classes,
+            "input_size": input_size
+        }
+        
+        # Add scheduler-specific config
+        if args.scheduler == "onecycle":
+            wandb_config.update({
+                "onecycle_pct_start": args.onecycle_pct_start,
+                "onecycle_div_factor": args.onecycle_div_factor,
+                "onecycle_final_div_factor": args.onecycle_final_div_factor,
+                "onecycle_anneal_strategy": args.onecycle_anneal_strategy,
+                "onecycle_three_phase": args.onecycle_three_phase
+            })
+        elif args.scheduler == "step":
+            wandb_config.update({
+                "step_size": args.step_size,
+                "gamma": args.gamma
+            })
+        
+        # Prepare tags
+        tags = args.wandb_tags or ["imagenet", "resnet50", "training"]
+        if args.amp:
+            tags.append("mixed_precision")
+        tags.append(args.scheduler)
+        
+        wandb.init(
+            project=args.wandb_project,
+            name=run_name,
+            tags=tags,
+            config=wandb_config,
+            group=args.wandb_group,
+            notes=args.wandb_notes,
+            reinit=True
+        )
+        
+        # Log model summary
+        wandb.watch(model, log_freq=100, log_graph=False)
+        print(f"📊 Wandb training logging initialized: {args.wandb_project}/{run_name}")
+        
+    elif args.use_wandb and not WANDB_AVAILABLE:
+        print("⚠️  Warning: Wandb requested but not available. Install with: pip install wandb")
 
     for epoch in range(start_epoch, args.epochs + 1):
         print(f"\nEpoch {epoch}/{args.epochs}")
@@ -368,9 +453,20 @@ def main():
             max_grad_norm=args.max_grad_norm,
             scheduler=scheduler if args.scheduler == "onecycle" else None,
             scheduler_step_per_batch=(args.scheduler == "onecycle"),
+            epoch=epoch,
+            use_wandb=args.use_wandb and not args.find_lr,
+            log_freq=100
         )
         print("Starting evaluation...")
-        te_loss, te_acc = evaluate(model, device, test_loader, criterion, use_amp=args.amp)
+        te_loss, te_acc = evaluate(
+            model, 
+            device, 
+            test_loader, 
+            criterion, 
+            use_amp=args.amp,
+            epoch=epoch,
+            use_wandb=args.use_wandb and not args.find_lr
+        )
         
         # Step scheduler per epoch (except OneCycleLR which steps per batch)
         if args.scheduler != "onecycle":
@@ -387,6 +483,18 @@ def main():
             f"Test Loss: {te_loss:.4f} | Test Acc: {te_acc:.2f}% | "
             f"LR: {current_lr:.6f}"
         )
+        
+        # Log metrics to wandb
+        if args.use_wandb and WANDB_AVAILABLE and not args.find_lr:
+            wandb.log({
+                "epoch": epoch,
+                "train/loss": tr_loss,
+                "train/accuracy": tr_acc,
+                "val/loss": te_loss,
+                "val/accuracy": te_acc,
+                "learning_rate": current_lr,
+                "best_val_accuracy": best_test_acc
+            }, step=epoch)
 
         # Save snapshot based on frequency or best accuracy
         should_save = False
@@ -547,6 +655,20 @@ def main():
             )
         
         print(f"[Output] All plots and reports saved in: {args.plot_dir}")
+    
+    # Finish wandb run
+    if args.use_wandb and WANDB_AVAILABLE and not args.find_lr:
+        # Log final metrics summary
+        wandb.log({
+            "final/train_loss": train_losses[-1],
+            "final/train_accuracy": train_acc[-1],
+            "final/val_loss": test_losses[-1],
+            "final/val_accuracy": test_acc[-1],
+            "final/best_val_accuracy": max(test_acc),
+            "final/total_epochs": args.epochs
+        })
+        wandb.finish()
+        print("📊 Wandb run completed successfully!")
     
     print("\n[Complete] Training completed successfully!")
     print("="*70)

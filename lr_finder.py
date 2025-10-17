@@ -9,6 +9,14 @@ import os
 # Import torch-lr-finder - this is required
 from torch_lr_finder import LRFinder as TorchLRFinder
 
+# Import wandb for experiment tracking (optional)
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None
+
 
 def find_lr(
     model: nn.Module,
@@ -21,7 +29,11 @@ def find_lr(
     num_iter: int = 100,
     plot: bool = True,
     save_path: Optional[str] = None,
-    use_amp: bool = False
+    use_amp: bool = False,
+    use_wandb: bool = False,
+    wandb_run_name: Optional[str] = None,
+    wandb_project: str = "imagenet-lr-finder",
+    wandb_tags: Optional[list] = None
 ) -> Tuple[float, Optional[plt.Figure]]:
     """
     Find optimal learning rate using torch-lr-finder library.
@@ -38,11 +50,44 @@ def find_lr(
         plot: Whether to create a plot
         save_path: Path to save the plot
         use_amp: Use automatic mixed precision (not used in torch-lr-finder)
+        use_wandb: Whether to log to Weights & Biases
+        wandb_run_name: Name for the wandb run
+        wandb_project: wandb project name
+        wandb_tags: Tags for the wandb run
         
     Returns:
         Tuple of (suggested_lr, figure)
     """
     print("Running learning rate range test using torch-lr-finder...")
+    
+    # Initialize wandb if requested
+    if use_wandb and WANDB_AVAILABLE:
+        wandb_config = {
+            "lr_finder_type": "basic",
+            "start_lr": start_lr,
+            "end_lr": end_lr,
+            "num_iter": num_iter,
+            "device": str(device),
+            "use_amp": use_amp,
+            "model_type": type(model).__name__,
+            "optimizer_type": type(optimizer).__name__,
+            "criterion_type": type(criterion).__name__
+        }
+        
+        run_name = wandb_run_name or f"lr_finder_basic_{start_lr:.0e}_{end_lr:.0e}"
+        tags = wandb_tags or ["lr_finder", "basic", "imagenet"]
+        
+        wandb.init(
+            project=wandb_project,
+            name=run_name,
+            tags=tags,
+            config=wandb_config,
+            reinit=True
+        )
+        
+        print(f"📊 Wandb logging initialized: {wandb_project}/{run_name}")
+    elif use_wandb and not WANDB_AVAILABLE:
+        print("⚠️  Warning: Wandb requested but not available. Install with: pip install wandb")
     
     # Handle streaming dataloader by creating a regular dataloader
     if hasattr(train_loader, '__class__') and 'StreamingDataLoader' in str(train_loader.__class__):
@@ -114,6 +159,29 @@ def find_lr(
     
     print(f"Suggested learning rate: {suggested_lr:.2e}")
     
+    # Log to wandb if enabled
+    if use_wandb and WANDB_AVAILABLE:
+        # Log the LR finder results
+        wandb.log({
+            "suggested_lr": suggested_lr,
+            "min_loss": min(losses),
+            "max_loss": max(losses),
+            "lr_range_start": start_lr,
+            "lr_range_end": end_lr,
+            "total_iterations": len(losses)
+        })
+        
+        # Create and log the LR vs Loss plot
+        if len(lrs) > 0 and len(losses) > 0:
+            lr_loss_data = [[lr, loss] for lr, loss in zip(lrs, losses)]
+            table = wandb.Table(data=lr_loss_data, columns=["learning_rate", "loss"])
+            wandb.log({
+                "lr_vs_loss_plot": wandb.plot.line(table, "learning_rate", "loss", 
+                                                 title="Learning Rate vs Loss")
+            })
+        
+        print("📊 Results logged to wandb")
+    
     # Create plot if requested
     fig = None
     if plot:
@@ -139,6 +207,15 @@ def find_lr(
     # Reset model and optimizer to original state
     lr_finder.reset()
     
+    # Log the plot to wandb if both are enabled
+    if use_wandb and WANDB_AVAILABLE and fig is not None:
+        wandb.log({"lr_finder_matplotlib_plot": wandb.Image(fig)})
+    
+    # Finish wandb run if we started one
+    if use_wandb and WANDB_AVAILABLE:
+        wandb.finish()
+        print("📊 Wandb run completed")
+    
     return suggested_lr, fig
 
 
@@ -155,7 +232,11 @@ def find_lr_advanced(
     smooth_f: float = 0.05,
     diverge_th: float = 5,
     plot: bool = True,
-    save_path: Optional[str] = None
+    save_path: Optional[str] = None,
+    use_wandb: bool = False,
+    wandb_run_name: Optional[str] = None,
+    wandb_project: str = "imagenet-lr-finder",
+    wandb_tags: Optional[list] = None
 ) -> Tuple[float, Optional[plt.Figure]]:
     """
     Advanced LR finder with more options using torch-lr-finder.
@@ -174,11 +255,46 @@ def find_lr_advanced(
         diverge_th: Threshold for divergence detection
         plot: Whether to create a plot
         save_path: Path to save the plot
+        use_wandb: Whether to log to Weights & Biases
+        wandb_run_name: Name for the wandb run
+        wandb_project: wandb project name
+        wandb_tags: Tags for the wandb run
         
     Returns:
         Tuple of (suggested_lr, figure)
     """
     print("Running advanced learning rate range test using torch-lr-finder...")
+    
+    # Initialize wandb if requested
+    if use_wandb and WANDB_AVAILABLE:
+        wandb_config = {
+            "lr_finder_type": "advanced",
+            "start_lr": start_lr,
+            "end_lr": end_lr,
+            "num_iter": num_iter,
+            "step_mode": step_mode,
+            "smooth_f": smooth_f,
+            "diverge_th": diverge_th,
+            "device": str(device),
+            "model_type": type(model).__name__,
+            "optimizer_type": type(optimizer).__name__,
+            "criterion_type": type(criterion).__name__
+        }
+        
+        run_name = wandb_run_name or f"lr_finder_advanced_{start_lr:.0e}_{end_lr:.0e}"
+        tags = wandb_tags or ["lr_finder", "advanced", "imagenet"]
+        
+        wandb.init(
+            project=wandb_project,
+            name=run_name,
+            tags=tags,
+            config=wandb_config,
+            reinit=True
+        )
+        
+        print(f"📊 Wandb logging initialized: {wandb_project}/{run_name}")
+    elif use_wandb and not WANDB_AVAILABLE:
+        print("⚠️  Warning: Wandb requested but not available. Install with: pip install wandb")
     
     # Create LR finder
     lr_finder = TorchLRFinder(model, optimizer, criterion, device=device)
@@ -221,6 +337,34 @@ def find_lr_advanced(
     print(f"Steepest descent LR: {steepest_lr:.2e}")
     print(f"Suggested learning rate: {suggested_lr:.2e}")
     
+    # Log to wandb if enabled
+    if use_wandb and WANDB_AVAILABLE:
+        # Log the LR finder results
+        wandb.log({
+            "suggested_lr": suggested_lr,
+            "min_loss_lr": min_loss_lr,
+            "steepest_descent_lr": steepest_lr,
+            "min_loss": min(losses),
+            "max_loss": max(losses),
+            "lr_range_start": start_lr,
+            "lr_range_end": end_lr,
+            "total_iterations": len(losses),
+            "step_mode": step_mode,
+            "smooth_f": smooth_f,
+            "diverge_th": diverge_th
+        })
+        
+        # Create and log the LR vs Loss plot
+        if len(lrs) > 0 and len(losses) > 0:
+            lr_loss_data = [[lr, loss] for lr, loss in zip(lrs, losses)]
+            table = wandb.Table(data=lr_loss_data, columns=["learning_rate", "loss"])
+            wandb.log({
+                "lr_vs_loss_plot": wandb.plot.line(table, "learning_rate", "loss", 
+                                                 title="Advanced LR Finder: Learning Rate vs Loss")
+            })
+        
+        print("📊 Results logged to wandb")
+    
     # Create plot if requested
     fig = None
     if plot:
@@ -246,6 +390,15 @@ def find_lr_advanced(
     
     # Reset model and optimizer to original state
     lr_finder.reset()
+    
+    # Log the plot to wandb if both are enabled
+    if use_wandb and WANDB_AVAILABLE and fig is not None:
+        wandb.log({"lr_finder_advanced_matplotlib_plot": wandb.Image(fig)})
+    
+    # Finish wandb run if we started one
+    if use_wandb and WANDB_AVAILABLE:
+        wandb.finish()
+        print("📊 Wandb run completed")
     
     return suggested_lr, fig
 

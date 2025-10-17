@@ -49,6 +49,12 @@ def main():
     # System arguments
     parser.add_argument("--no_cuda", action="store_true", help="Disable CUDA")
     
+    # Wandb arguments
+    parser.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb_project", type=str, default="imagenet-lr-finder", help="Wandb project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="Wandb run name")
+    parser.add_argument("--wandb_tags", type=str, nargs="*", default=None, help="Wandb tags")
+    
     args = parser.parse_args()
     
     print("="*70)
@@ -91,6 +97,16 @@ def main():
     
     if args.no_cuda:
         cmd.append("--no_cuda")
+    
+    # Add wandb arguments if enabled
+    if args.use_wandb:
+        cmd.extend(["--use_wandb"])
+        if args.wandb_project:
+            cmd.extend(["--wandb_project", args.wandb_project])
+        if args.wandb_run_name:
+            cmd.extend(["--wandb_run_name", args.wandb_run_name])
+        if args.wandb_tags:
+            cmd.extend(["--wandb_tags"] + args.wandb_tags)
     
     print("Running LR Finder...")
     print("Command:", " ".join(cmd))

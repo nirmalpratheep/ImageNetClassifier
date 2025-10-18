@@ -17,7 +17,6 @@ A10G_CONFIGS = {
         "description": "LR Finder - Optimized for A10G",
         "batch_size": 512,  # Large batch for stable LR finding
         "max_samples": 5000,
-        "lr_iter": 300,
         "num_workers": 8,
         "flags": ["--amp"],  # Mixed precision for faster computation
         "wandb": {
@@ -26,6 +25,7 @@ A10G_CONFIGS = {
             "tags": ["a10g", "lr-finder", "optimized"]
         },
         "extra": {
+            "lr_iter": 300,
             "lr_start": "1e-6",
             "lr_end": "1.0"
         }

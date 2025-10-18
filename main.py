@@ -615,35 +615,50 @@ def main():
         print(f"{'Class':<20} {'Precision':<11} {'Recall':<11} {'F1-Score':<11} {'Support':<8}")
         print("-"*70)
         
-        # Sort by F1 score
+        # Sort by F1 score  
         f1_scores = metrics['f1_per_class']
+        actual_num_classes = len(f1_scores)
         sorted_indices = np.argsort(f1_scores)[::-1]  # descending order
         
-        for idx in sorted_indices[:10]:
-            class_name = class_names[idx]
+        print(f"Showing top/bottom performers from {actual_num_classes} classes with data:")
+        print()
+        
+        # Show top performers (limited by actual classes available)
+        top_count = min(10, actual_num_classes)
+        for idx in sorted_indices[:top_count]:
+            # Ensure we don't exceed class_names bounds
+            class_name = class_names[idx] if idx < len(class_names) else f"class_{idx}"
             print(f"{class_name:<20} "
                   f"{metrics['precision_per_class'][idx]:<11.4f} "
                   f"{metrics['recall_per_class'][idx]:<11.4f} "
                   f"{metrics['f1_per_class'][idx]:<11.4f} "
                   f"{int(metrics['support_per_class'][idx]):<8}")
         
-        print("\nTop 10 Worst Performing Classes:")
+        print(f"\nTop {min(10, actual_num_classes)} Worst Performing Classes:")
         print(f"{'Class':<20} {'Precision':<11} {'Recall':<11} {'F1-Score':<11} {'Support':<8}")
         print("-"*70)
         
-        for idx in sorted_indices[-10:]:
-            class_name = class_names[idx]
+        # Show bottom performers (limited by actual classes available)
+        bottom_count = min(10, actual_num_classes)
+        for idx in sorted_indices[-bottom_count:]:
+            # Ensure we don't exceed class_names bounds
+            class_name = class_names[idx] if idx < len(class_names) else f"class_{idx}"
             print(f"{class_name:<20} "
                   f"{metrics['precision_per_class'][idx]:<11.4f} "
                   f"{metrics['recall_per_class'][idx]:<11.4f} "
                   f"{metrics['f1_per_class'][idx]:<11.4f} "
                   f"{int(metrics['support_per_class'][idx]):<8}")
     else:
-        # CIFAR-10: Show all classes
+        # Show metrics for classes that actually have data (handle partial sampling)
+        actual_num_classes = len(metrics['precision_per_class'])
         print(f"{'Class':<12} {'Precision':<11} {'Recall':<11} {'F1-Score':<11} {'Support':<8}")
         print("-"*70)
+        print(f"Showing metrics for {actual_num_classes} classes (out of {num_classes} total classes)")
+        print("-"*70)
         
-        for i, class_name in enumerate(class_names):
+        # Only show metrics for classes that have data
+        for i in range(min(actual_num_classes, len(class_names))):
+            class_name = class_names[i] if i < len(class_names) else f"class_{i}"
             print(f"{class_name:<12} "
                   f"{metrics['precision_per_class'][i]:<11.4f} "
                   f"{metrics['recall_per_class'][i]:<11.4f} "

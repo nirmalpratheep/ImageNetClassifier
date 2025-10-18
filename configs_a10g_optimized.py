@@ -14,18 +14,18 @@ import argparse
 # A10G GPU Optimized Configurations
 A10G_CONFIGS = {
     "lr_finder": {
-        "description": "LR Finder - Optimized for A10G",
+        "description": "LR Finder - Optimized for A10G (200K samples)",
         "batch_size": 128,  # Large batch for stable LR finding
-        "max_samples": 3000,
+        "max_samples": 200000,  # 200K samples for comprehensive LR search
         "num_workers": 8,
         "flags": ["--amp"],  # Mixed precision for faster computation
         "wandb": {
             "use_wandb": True,
             "project": "imagenet-lr-finder-a10g",
-            "tags": ["a10g", "lr-finder", "optimized"]
+            "tags": ["a10g", "lr-finder", "200k-samples", "comprehensive"]
         },
         "extra": {
-            "lr_iter": 300,
+            "lr_iter": 800,     # More iterations for better LR curve with 200K samples
             "lr_start": "1e-5",  # Start higher to avoid extremely small LRs
             "lr_end": "0.1"      # End lower for more focused search
         }
@@ -301,9 +301,9 @@ def show_recommendations():
     print("• Use gradient accumulation if you need larger effective batch")
     print("• Enable wandb for experiment tracking on long runs")
     print("• Learning rates: --auto_lr (from LR finder) or --lr 0.001 (manual)")
+    print("• LR Finder now uses 200K samples (800 iterations) for comprehensive search")
     print("• If auto LR is too small (<1e-5), use manual: --lr 0.001 or --lr 0.0001")
-    print("• For very small LRs, increase LR finder batch size for stability")
-    print("• First run: lr_finder, then training with --auto_lr or manual --lr")
+    print("• First run: lr_finder (takes ~10-15 min), then training with --auto_lr")
     print("="*70)
 
 def main():

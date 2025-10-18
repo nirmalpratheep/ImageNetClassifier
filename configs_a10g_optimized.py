@@ -15,8 +15,8 @@ import argparse
 A10G_CONFIGS = {
     "lr_finder": {
         "description": "LR Finder - Optimized for A10G",
-        "batch_size": 256,  # Large batch for stable LR finding
-        "max_samples": 5000,
+        "batch_size": 128,  # Large batch for stable LR finding
+        "max_samples": 3000,
         "num_workers": 8,
         "flags": ["--amp"],  # Mixed precision for faster computation
         "wandb": {

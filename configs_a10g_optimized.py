@@ -26,8 +26,8 @@ A10G_CONFIGS = {
         },
         "extra": {
             "lr_iter": 300,
-            "lr_start": "1e-6",
-            "lr_end": "1.0"
+            "lr_start": "1e-5",  # Start higher to avoid extremely small LRs
+            "lr_end": "0.1"      # End lower for more focused search
         }
     },
     
@@ -301,7 +301,9 @@ def show_recommendations():
     print("• Use gradient accumulation if you need larger effective batch")
     print("• Enable wandb for experiment tracking on long runs")
     print("• Learning rates: --auto_lr (from LR finder) or --lr 0.001 (manual)")
-    print("• First run: lr_finder, then training with --auto_lr")
+    print("• If auto LR is too small (<1e-5), use manual: --lr 0.001 or --lr 0.0001")
+    print("• For very small LRs, increase LR finder batch size for stability")
+    print("• First run: lr_finder, then training with --auto_lr or manual --lr")
     print("="*70)
 
 def main():

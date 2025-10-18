@@ -214,8 +214,38 @@ def main():
             return 1
         args.lr = suggested_lr
         print(f"📖 Auto-loaded learning rate from LR finder: {args.lr:.2e}")
+        
+        # Smart handling for very small learning rates
+        if args.lr < 1e-5:
+            print(f"⚠️  Very small learning rate detected: {args.lr:.2e}")
+            print("   This might be too small for effective training.")
+            
+            if args.scheduler == "onecycle":
+                # For OneCycleLR, adjust div_factor to prevent zero LR
+                recommended_div_factor = max(1.0, min(5.0, args.lr * 50000))  # Reasonable range
+                print(f"   Adjusting OneCycleLR div_factor: {args.onecycle_div_factor} → {recommended_div_factor:.1f}")
+                args.onecycle_div_factor = recommended_div_factor
+            
+            # Suggest manual override for very small LRs
+            if args.lr < 1e-6:
+                print(f"💡 Suggestion: Try manual LR override with --lr 0.001 or --lr 0.0001")
+                print(f"   Or re-run LR finder with larger batch size for more stable results")
+        
+        elif args.scheduler == "onecycle" and args.lr < 1e-4:
+            # Moderate small LR handling for OneCycleLR
+            recommended_div_factor = max(2.0, args.lr * 25000)  # Ensure reasonable initial_lr
+            if args.onecycle_div_factor > recommended_div_factor:
+                print(f"🔧 Adjusting OneCycleLR div_factor for small LR: {args.onecycle_div_factor} → {recommended_div_factor:.1f}")
+                args.onecycle_div_factor = recommended_div_factor
     else:
         print(f"📖 Using manual learning rate: {args.lr:.2e}")
+        
+    # Final LR validation
+    if args.lr <= 0:
+        print("❌ Error: Learning rate must be positive")
+        print(f"   Current LR: {args.lr}")
+        print("   Try running LR finder again or use manual --lr")
+        return 1
     
     set_seed(42)
     device = get_device(prefer_cuda=not args.no_cuda)

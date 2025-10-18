@@ -65,8 +65,12 @@ def train_epoch(
             
             if epoch is not None:
                 log_data["batch/epoch"] = epoch
-                
-            wandb.log(log_data)
+                # Use consistent step calculation: epoch * 1000 + batch_idx for unique batch steps
+                step = epoch * 1000 + batch_idx
+                wandb.log(log_data, step=step)
+            else:
+                # If no epoch provided, just use auto-increment (fallback)
+                wandb.log(log_data)
 
     # Handle streaming dataloaders that might not have a proper length
     try:
@@ -115,11 +119,12 @@ def evaluate(model, device, test_loader, criterion, use_amp: bool = False, epoch
     
     # Log validation results to wandb
     if use_wandb and WANDB_AVAILABLE and epoch is not None:
+        # Use epoch-based step for validation (consistent with main.py epoch logging)
         wandb.log({
             "val/epoch_loss": test_loss,
             "val/epoch_accuracy": test_acc,
             "val/epoch": epoch
-        })
+        }, step=epoch)
 
     return test_loss, test_acc
 

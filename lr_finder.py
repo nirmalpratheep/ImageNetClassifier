@@ -167,22 +167,22 @@ def find_lr(
     if use_wandb and WANDB_AVAILABLE:
         # Log the LR finder results
         wandb.log({
-            "suggested_lr": suggested_lr,
-            "min_loss": min(losses),
-            "max_loss": max(losses),
-            "lr_range_start": start_lr,
-            "lr_range_end": end_lr,
-            "total_iterations": len(losses)
-        })
+            "lr_finder/suggested_lr": suggested_lr,
+            "lr_finder/min_loss": min(losses),
+            "lr_finder/max_loss": max(losses),
+            "lr_finder/lr_range_start": start_lr,
+            "lr_finder/lr_range_end": end_lr,
+            "lr_finder/total_iterations": len(losses)
+        }, step=0)  # Use step=0 for LR finder to avoid conflicts with training steps
         
         # Create and log the LR vs Loss plot
         if len(lrs) > 0 and len(losses) > 0:
             lr_loss_data = [[lr, loss] for lr, loss in zip(lrs, losses)]
             table = wandb.Table(data=lr_loss_data, columns=["learning_rate", "loss"])
             wandb.log({
-                "lr_vs_loss_plot": wandb.plot.line(table, "learning_rate", "loss", 
+                "lr_finder/lr_vs_loss_plot": wandb.plot.line(table, "learning_rate", "loss", 
                                                  title="Learning Rate vs Loss")
-            })
+            }, step=0)  # Use step=0 for LR finder to avoid conflicts with training steps
         
         print("📊 Results logged to wandb")
     
@@ -376,27 +376,27 @@ def find_lr_advanced(
     if use_wandb and WANDB_AVAILABLE:
         # Log the LR finder results
         wandb.log({
-            "suggested_lr": suggested_lr,
-            "min_loss_lr": min_loss_lr,
-            "steepest_descent_lr": steepest_lr,
-            "min_loss": min(losses),
-            "max_loss": max(losses),
-            "lr_range_start": start_lr,
-            "lr_range_end": end_lr,
-            "total_iterations": len(losses),
-            "step_mode": step_mode,
-            "smooth_f": smooth_f,
-            "diverge_th": diverge_th
-        })
+            "lr_finder/suggested_lr": suggested_lr,
+            "lr_finder/min_loss_lr": min_loss_lr,
+            "lr_finder/steepest_descent_lr": steepest_lr,
+            "lr_finder/min_loss": min(losses),
+            "lr_finder/max_loss": max(losses),
+            "lr_finder/lr_range_start": start_lr,
+            "lr_finder/lr_range_end": end_lr,
+            "lr_finder/total_iterations": len(losses),
+            "lr_finder/step_mode": step_mode,
+            "lr_finder/smooth_f": smooth_f,
+            "lr_finder/diverge_th": diverge_th
+        }, step=0)  # Use step=0 for LR finder to avoid conflicts with training steps
         
         # Create and log the LR vs Loss plot
         if len(lrs) > 0 and len(losses) > 0:
             lr_loss_data = [[lr, loss] for lr, loss in zip(lrs, losses)]
             table = wandb.Table(data=lr_loss_data, columns=["learning_rate", "loss"])
             wandb.log({
-                "lr_vs_loss_plot": wandb.plot.line(table, "learning_rate", "loss", 
+                "lr_finder/lr_vs_loss_plot": wandb.plot.line(table, "learning_rate", "loss", 
                                                  title="Advanced LR Finder: Learning Rate vs Loss")
-            })
+            }, step=0)  # Use step=0 for LR finder to avoid conflicts with training steps
         
         print("📊 Results logged to wandb")
     

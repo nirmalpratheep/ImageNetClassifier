@@ -36,13 +36,13 @@ A10G_CONFIGS = {
         "batch_size": 128,  # Conservative for A10G with ResNet-50
         "max_samples": 25000,
         "epochs": 20,
-        "num_workers": 12,
+        "num_workers": 8,
         "flags": ["--amp"],
-        "scheduler": "onecycle",
+        "scheduler": "cosine",  # Changed from onecycle to cosine for better small LR handling
         "wandb": {
             "use_wandb": True,
             "project": "imagenet-sample-training-a10g",
-            "tags": ["a10g", "sample-training", "onecycle"]
+            "tags": ["a10g", "sample-training", "cosine"]
         },
         "extra": {
             "max_grad_norm": "1.0"
@@ -53,7 +53,7 @@ A10G_CONFIGS = {
         "description": "Full Training - Conservative (safe batch size)",
         "batch_size": 64,  # Very conservative for A10G with ResNet-50
         "epochs": 50,
-        "num_workers": 16,
+        "num_workers": 8,
         "flags": ["--amp"],
         "scheduler": "cosine",
         "wandb": {
@@ -72,7 +72,7 @@ A10G_CONFIGS = {
         "description": "Full Training - Aggressive (higher batch size)",
         "batch_size": 128,  # Aggressive but safe for A10G with ResNet-50
         "epochs": 50, 
-        "num_workers": 16,
+        "num_workers": 8,
         "flags": ["--amp"],
         "scheduler": "cosine",
         "wandb": {

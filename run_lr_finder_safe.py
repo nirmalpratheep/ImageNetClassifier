@@ -7,6 +7,27 @@ This version is designed to work well with partial datasets and avoid extremely 
 import argparse
 import sys
 import os
+import subprocess
+import re
+import json
+from datetime import datetime
+
+def extract_lr_from_output(output_text):
+    """Extract the suggested learning rate from the LR finder output."""
+    patterns = [
+        r"Suggested learning rate: ([\d\.e\+\-]+)",
+        r"Suggested LR: ([\d\.e\+\-]+)",
+        r"Learning rate: ([\d\.e\+\-]+)"
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, output_text)
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                continue
+    return None
 
 def main():
     parser = argparse.ArgumentParser(description="Run Safe LR Finder on ImageNet with better defaults")
@@ -85,15 +106,51 @@ def main():
     print(" ".join(cmd))
     print()
     
-    # Execute command
-    import subprocess
-    result = subprocess.run(cmd, capture_output=False)
+    # Execute command and capture output
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    # Print the output in real-time
+    print(result.stdout)
+    if result.stderr:
+        print("STDERR:", result.stderr)
     
     if result.returncode == 0:
+        # Extract suggested learning rate from output
+        suggested_lr = extract_lr_from_output(result.stdout)
+        
+        if suggested_lr is None:
+            print("⚠️  Warning: Could not extract suggested learning rate from output")
+            print("Using default learning rate of 0.001")
+            suggested_lr = 0.001
+        
+        print(f"\n🎯 SUGGESTED LEARNING RATE: {suggested_lr:.2e}")
+        
+        # Create suggested_lr.json file
+        lr_info = {
+            "suggested_lr": suggested_lr,
+            "dataset": "imagenet_subset",
+            "batch_size": args.batch_size,
+            "lr_finder_epochs": 1,
+            "max_samples": args.max_samples,
+            "val_ratio": args.val_ratio,
+            "lr_range_start": args.lr_start,
+            "lr_range_end": args.lr_end,
+            "lr_iterations": args.lr_iter,
+            "plot_file": os.path.join(args.output_dir, "lr_finder_safe_imagenet.png"),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Save suggested LR to JSON file
+        lr_info_path = os.path.join(args.output_dir, "suggested_lr.json")
+        with open(lr_info_path, 'w') as f:
+            json.dump(lr_info, f, indent=2)
+        
         print(f"\n✅ Safe LR Finder completed successfully!")
         print(f"📊 Plot saved to: {os.path.join(args.output_dir, 'lr_finder_safe_imagenet.png')}")
+        print(f"💾 LR info saved to: {lr_info_path}")
+        print(f"🎯 Suggested LR: {suggested_lr:.2e}")
         print(f"💡 Tip: Use the suggested LR (or slightly lower) for training")
-        print(f"🚀 Next: Run training with the found LR using train_with_lr.py")
+        print(f"🚀 Next: Run training with the found LR using train_with_lr.py --auto_lr")
     else:
         print(f"\n❌ Safe LR Finder failed with return code: {result.returncode}")
         print(f"💡 Try: Check your data directory structure or use --max_samples 1000 for quicker testing")

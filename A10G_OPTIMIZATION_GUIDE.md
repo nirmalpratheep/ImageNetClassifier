@@ -1,0 +1,244 @@
+# A10G GPU Optimization Guide
+
+## 🚀 **Quick Start for Maximum Performance**
+
+Your **g5.2xlarge** instance with **A10G GPU (24GB VRAM)** is optimized for high-performance ImageNet training.
+
+### **⚡ One-Command Optimization**
+
+```bash
+# Get optimization recommendations
+python configs_a10g_optimized.py recommendations
+
+# Run optimized LR finder 
+python configs_a10g_optimized.py lr_finder --data_dir ./data
+
+# Run optimized training
+python configs_a10g_optimized.py full_training_aggressive --data_dir ./data
+```
+
+---
+
+## 📊 **A10G Optimized Configurations**
+
+### **🔍 LR Finder (Recommended Start)**
+```bash
+python configs_a10g_optimized.py lr_finder --data_dir ./data
+```
+- **Batch Size**: 512 (stable LR finding)
+- **Samples**: 5,000 (fast iteration)
+- **Workers**: 8 
+- **Features**: AMP enabled, 300 LR iterations
+- **Output**: `./outputs/lr_finder_clean_imagenet.png` + `suggested_lr.json`
+
+### **🏃 Sample Training (Fast Iteration)**
+```bash
+python configs_a10g_optimized.py sample_training --data_dir ./data
+```
+- **Batch Size**: 768 (high GPU utilization)
+- **Samples**: 25,000 (manageable subset)
+- **Epochs**: 20
+- **Scheduler**: OneCycleLR (fast convergence)
+- **Time**: ~15-30 minutes
+
+### **🎯 Full Training - Conservative (Recommended)**
+```bash
+python configs_a10g_optimized.py full_training_conservative --data_dir ./data
+```
+- **Batch Size**: 384 (safe for full dataset)
+- **Epochs**: 50
+- **Workers**: 16
+- **Features**: AMP, Wandb, Model checkpoints
+- **Memory**: ~18GB VRAM usage
+
+### **🔥 Full Training - Aggressive (Maximum Performance)**
+```bash
+python configs_a10g_optimized.py full_training_aggressive --data_dir ./data
+```
+- **Batch Size**: 512 (push A10G limits)
+- **Epochs**: 50
+- **Workers**: 16
+- **Memory**: ~22GB VRAM usage
+- **Risk**: May OOM on very large datasets
+
+### **🏆 Speed Benchmark**
+```bash
+python configs_a10g_optimized.py speed_benchmark --data_dir ./data
+```
+- **Batch Size**: 1024 (extreme)
+- **Purpose**: Test maximum throughput
+- **Duration**: ~5-10 minutes
+
+---
+
+## 🛠️ **Performance Optimizations Applied**
+
+### **Automatic CUDA Optimizations**
+When you run any training, these are automatically applied:
+
+```
+✅ cuDNN benchmark enabled
+✅ TF32 enabled for matmul  
+✅ TF32 enabled for cuDNN
+✅ Memory fraction set to 95%
+✅ CUDA_LAUNCH_BLOCKING = 0
+✅ PYTORCH_CUDA_ALLOC_CONF = max_split_size_mb:512
+```
+
+### **Model Optimizations**
+```
+✅ torch.compile enabled (max-autotune)  [PyTorch 2.0+]
+✅ Mixed precision training (AMP)
+✅ Gradient clipping (norm=1.0)
+```
+
+### **Data Loading Optimizations**
+```
+✅ Pin memory enabled
+✅ 12-16 workers (optimal for g5.2xlarge 8 vCPUs)
+✅ Prefetch factor optimized
+```
+
+---
+
+## 📈 **Expected Performance**
+
+### **A10G Specifications**
+- **VRAM**: 24GB GDDR6 
+- **Compute**: 9,216 CUDA cores + 288 Tensor cores
+- **Memory BW**: 600 GB/s
+- **TensorFloat-32**: Supported (significant speedup)
+
+### **Throughput Estimates**
+| Configuration | Batch Size | Samples/sec | Time/Epoch* |
+|---------------|------------|-------------|-------------|
+| Sample (25k)  | 768        | ~2,000      | 30 sec      |
+| Conservative  | 384        | ~1,200      | 50 sec      |
+| Aggressive    | 512        | ~1,500      | 40 sec      |
+| Benchmark     | 1024       | ~2,500      | 25 sec      |
+
+*Estimated for 60k samples with data loading optimizations
+
+---
+
+## 🔍 **Monitoring GPU Usage**
+
+### **Real-time Monitoring**
+```bash
+# GPU utilization
+watch -n 1 nvidia-smi
+
+# Memory usage  
+nvidia-smi dmon -s um
+
+# Power & temperature
+nvidia-smi dmon -s pt
+```
+
+### **Target Metrics**
+- **GPU Utilization**: 95-100%
+- **Memory Usage**: 18-22GB (75-90% of 24GB)
+- **Power**: 250-300W
+- **Temperature**: <80°C
+
+---
+
+## ⚠️ **Troubleshooting**
+
+### **Out of Memory (OOM)**
+```bash
+# Reduce batch size by 25%
+python configs_a10g_optimized.py full_training_conservative --data_dir ./data
+
+# Or use gradient accumulation
+python main.py --batch_size 256 --gradient_accumulation_steps 2 --data_dir ./data
+```
+
+### **Low GPU Utilization (<80%)**
+1. **Increase batch size**: Try aggressive config
+2. **Increase workers**: Add `--num_workers 20`
+3. **Check data bottleneck**: Monitor CPU usage
+
+### **Slow Data Loading**
+```bash
+# Increase workers
+python main.py --num_workers 16 --batch_size 512 --data_dir ./data
+
+# Enable pin memory (auto-enabled)
+# Reduce data augmentation if needed
+```
+
+---
+
+## 🎯 **Recommended Workflow**
+
+### **1. Find Optimal LR (2 minutes)**
+```bash
+python configs_a10g_optimized.py lr_finder --data_dir ./data
+```
+
+### **2. Quick Validation (20 minutes)**
+```bash
+python configs_a10g_optimized.py sample_training --data_dir ./data
+```
+
+### **3. Full Training (2-4 hours)**
+```bash
+# Conservative (recommended)
+python configs_a10g_optimized.py full_training_conservative --data_dir ./data
+
+# Or aggressive (if conservative works well)
+python configs_a10g_optimized.py full_training_aggressive --data_dir ./data
+```
+
+### **4. Monitor Progress**
+```bash
+# Terminal 1: Training
+python configs_a10g_optimized.py full_training_conservative --data_dir ./data
+
+# Terminal 2: Monitoring  
+watch -n 1 nvidia-smi
+```
+
+---
+
+## 💡 **Pro Tips**
+
+1. **Start Conservative**: Use `full_training_conservative` first
+2. **Monitor Memory**: Keep VRAM usage <22GB for stability  
+3. **Use Wandb**: Add `--use_wandb` for experiment tracking
+4. **Save Checkpoints**: Enabled by default every 5 epochs
+5. **Test First**: Run `sample_training` before full runs
+6. **Power Limit**: A10G can handle sustained 300W loads
+
+---
+
+## 🔧 **Manual Optimization**
+
+If you want to manually tune parameters:
+
+```bash
+# Maximum safe batch size for your dataset
+python main.py \
+  --batch_size 512 \
+  --num_workers 16 \
+  --amp \
+  --scheduler cosine \
+  --epochs 50 \
+  --data_dir ./data \
+  --use_wandb \
+  --lr 1.6e-05
+```
+
+### **Key Parameters for A10G**
+- `--batch_size`: 256-768 (dataset dependent)
+- `--num_workers`: 12-20 (I/O optimization)
+- `--amp`: Always enable (free 1.5-2x speedup)
+- `--scheduler cosine`: Stable for long training
+- `--scheduler onecycle`: Fast convergence
+
+---
+
+**Your A10G setup is now optimized for maximum ImageNet training performance!** 🚀
+
+Use `python configs_a10g_optimized.py recommendations` anytime for system-specific advice.

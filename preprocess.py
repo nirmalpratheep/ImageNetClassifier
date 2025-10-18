@@ -220,8 +220,30 @@ def detect_data_structure(data_dir: str) -> str:
     return "unknown"
 
 
+class TransformWrapper(Dataset):
+    """Wrapper to apply transforms to a dataset after train/val split."""
+    def __init__(self, dataset, transform):
+        self.dataset = dataset
+        self.transform = transform
+    
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self, idx):
+        image, label = self.dataset[idx]
+        if self.transform:
+            image = self.transform(image)
+        return image, label
+    
+    @property
+    def classes(self):
+        if hasattr(self.dataset, 'dataset'):
+            return self.dataset.dataset.classes
+        return getattr(self.dataset, 'classes', [])
+
+
 def get_transforms():
-    """Return transforms for ImageNet-1K dataset."""
+    """Return raw Albumentations transforms for ImageNet-1K dataset."""
     # ImageNet-1K transforms
     train_transforms = Compose([
         Resize(height=256, width=256, p=1.0),
@@ -240,7 +262,7 @@ def get_transforms():
         ToTensorV2(),
     ])
     
-    return AlbumentationsAdapter(train_transforms), AlbumentationsAdapter(test_transforms)
+    return train_transforms, test_transforms
 
 
 def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str = "./data", val_ratio: float = 0.2):
@@ -301,28 +323,7 @@ def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str 
                 full_dataset, val_ratio=val_ratio, seed=42
             )
             
-            # Apply transforms to the split datasets
-            # We need to wrap them to apply transforms
-            class TransformWrapper(Dataset):
-                def __init__(self, dataset, transform):
-                    self.dataset = dataset
-                    self.transform = transform
-                
-                def __len__(self):
-                    return len(self.dataset)
-                
-                def __getitem__(self, idx):
-                    image, label = self.dataset[idx]
-                    if self.transform:
-                        image = self.transform(image)
-                    return image, label
-                
-                @property
-                def classes(self):
-                    if hasattr(self.dataset, 'dataset'):
-                        return self.dataset.dataset.classes
-                    return getattr(self.dataset, 'classes', [])
-            
+            # Apply transforms to the split datasets using the global TransformWrapper
             train_dataset = TransformWrapper(train_dataset, AlbumentationsAdapter(train_transforms))
             test_dataset = TransformWrapper(val_dataset, AlbumentationsAdapter(test_transforms))
             
@@ -358,27 +359,7 @@ def get_datasets(streaming: bool = True, max_samples: int = None, data_dir: str 
                 full_dataset, val_ratio=val_ratio, seed=42
             )
             
-            # Apply transforms after splitting (same wrapper as above)
-            class TransformWrapper(Dataset):
-                def __init__(self, dataset, transform):
-                    self.dataset = dataset
-                    self.transform = transform
-                
-                def __len__(self):
-                    return len(self.dataset)
-                
-                def __getitem__(self, idx):
-                    image, label = self.dataset[idx]
-                    if self.transform:
-                        image = self.transform(image)
-                    return image, label
-                
-                @property
-                def classes(self):
-                    if hasattr(self.dataset, 'dataset'):
-                        return self.dataset.dataset.classes
-                    return getattr(self.dataset, 'classes', [])
-            
+            # Apply transforms after splitting using the global TransformWrapper
             train_dataset = TransformWrapper(train_dataset, AlbumentationsAdapter(train_transforms))
             test_dataset = TransformWrapper(test_dataset, AlbumentationsAdapter(test_transforms))
             

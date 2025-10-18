@@ -258,6 +258,11 @@ def main():
         print("RUNNING LEARNING RATE FINDER")
         print("="*70)
         
+        print(f"🔍 DEBUG: Starting LR finder...")
+        print(f"🔍 DEBUG: lr_advanced = {args.lr_advanced}")
+        print(f"🔍 DEBUG: lr_plot path = {args.lr_plot}")
+        print(f"🔍 DEBUG: Directory exists = {os.path.exists(os.path.dirname(args.lr_plot))}")
+        
         try:
             if args.lr_advanced:
                 suggested_lr, fig = find_lr_advanced(
@@ -309,6 +314,9 @@ def main():
             
         except Exception as e:
             print(f"LR finder failed: {e}")
+            print("Full error traceback:")
+            import traceback
+            traceback.print_exc()
             print("Continuing with original learning rate...")
         
         print("="*70)

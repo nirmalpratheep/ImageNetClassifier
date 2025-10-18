@@ -15,6 +15,13 @@ from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR, StepLR
 from torchsummary import summary
 from lr_finder import find_lr, find_lr_advanced, LRFinder
 
+# GPU optimizations import (optional)
+try:
+    from gpu_optimizations import setup_cuda_optimizations, optimize_model
+    GPU_OPTIMIZATIONS_AVAILABLE = True
+except ImportError:
+    GPU_OPTIMIZATIONS_AVAILABLE = False
+
 # Visualization imports
 from visualization import (
     create_training_summary, create_evaluation_summary, 
@@ -184,9 +191,18 @@ def main():
     args = parser.parse_args()
     set_seed(42)
     device = get_device(prefer_cuda=not args.no_cuda)
+    
+    # Apply GPU optimizations if available and using CUDA
+    use_cuda = torch.cuda.is_available() and not args.no_cuda
+    if use_cuda and GPU_OPTIMIZATIONS_AVAILABLE:
+        print("🚀 Applying A10G GPU optimizations...")
+        optimizations = setup_cuda_optimizations()
+        for opt in optimizations:
+            print(f"  {opt}")
+    elif use_cuda:
+        print("ℹ️  GPU optimizations available - run with gpu_optimizations.py")
 
     # Optimize data loading based on device
-    use_cuda = torch.cuda.is_available() and not args.no_cuda
     pin_memory = use_cuda  # Use pin_memory when CUDA is available for better performance
     num_workers = min(args.num_workers, 2) if not use_cuda else args.num_workers
     
@@ -234,6 +250,13 @@ def main():
     model = build_model(device, num_classes=num_classes)
     print(f"Device: {device}")
     print(f"Model: ResNet-50 for {num_classes} classes")
+    
+    # Apply model-level optimizations
+    if use_cuda and GPU_OPTIMIZATIONS_AVAILABLE:
+        model, model_opts = optimize_model(model, use_compile=True)
+        for opt in model_opts:
+            print(f"  {opt}")
+    
     print(f"Model loaded, starting training...")
     
     # Dataset configuration  

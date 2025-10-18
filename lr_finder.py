@@ -1,9 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import matplotlib.pyplot as plt
 import numpy as np
 from typing import Optional, Tuple
+
+# Configure matplotlib for headless systems (AWS, etc.)
+import matplotlib
+matplotlib.use('Agg')  # Use Anti-Grain Geometry backend (no display needed)
+import matplotlib.pyplot as plt
 import os
 
 # Import torch-lr-finder - this is required
@@ -186,14 +190,20 @@ def find_lr(
     fig = None
     if plot:
         try:
+            print(f"🔍 DEBUG: Creating LR finder plot...")
+            print(f"🔍 DEBUG: Matplotlib backend: {matplotlib.get_backend()}")
+            print(f"🔍 DEBUG: Save path: {save_path}")
+            
             # Use the built-in plot method from torch-lr-finder
             fig_result = lr_finder.plot(skip_start=10, skip_end=5)
             
             # Handle both tuple and figure returns
             if isinstance(fig_result, tuple):
                 fig = fig_result[0] if fig_result else None
+                print(f"🔍 DEBUG: Plot returned tuple, extracted figure: {fig is not None}")
             else:
                 fig = fig_result
+                print(f"🔍 DEBUG: Plot returned figure directly: {fig is not None}")
             
             if fig is not None:
                 # Add suggested LR line
@@ -204,13 +214,27 @@ def find_lr(
                 
                 # Save if path provided
                 if save_path:
+                    print(f"🔍 DEBUG: Attempting to save plot to: {save_path}")
+                    # Ensure directory exists
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                    print(f"LR finder plot saved to: {save_path}")
+                    
+                    # Verify file was created
+                    if os.path.exists(save_path):
+                        file_size = os.path.getsize(save_path)
+                        print(f"✅ LR finder plot saved to: {save_path} ({file_size} bytes)")
+                    else:
+                        print(f"❌ Failed to create plot file at: {save_path}")
+                else:
+                    print("🔍 DEBUG: No save_path provided, plot not saved to disk")
             else:
-                print("Warning: Could not create matplotlib figure")
+                print("❌ Warning: Could not create matplotlib figure")
                 
         except Exception as e:
-            print(f"Warning: Could not create plot: {e}")
+            print(f"❌ Warning: Could not create plot: {e}")
+            import traceback
+            print("🔍 DEBUG: Full traceback:")
+            traceback.print_exc()
             fig = None
     
     # Reset model and optimizer to original state
@@ -378,13 +402,19 @@ def find_lr_advanced(
     fig = None
     if plot:
         try:
+            print(f"🔍 DEBUG: Creating advanced LR finder plot...")
+            print(f"🔍 DEBUG: Matplotlib backend: {matplotlib.get_backend()}")
+            print(f"🔍 DEBUG: Save path: {save_path}")
+            
             fig_result = lr_finder.plot(skip_start=10, skip_end=5)
             
             # Handle both tuple and figure returns
             if isinstance(fig_result, tuple):
                 fig = fig_result[0] if fig_result else None
+                print(f"🔍 DEBUG: Plot returned tuple, extracted figure: {fig is not None}")
             else:
                 fig = fig_result
+                print(f"🔍 DEBUG: Plot returned figure directly: {fig is not None}")
             
             if fig is not None:
                 # Add suggested LR lines
@@ -397,13 +427,27 @@ def find_lr_advanced(
                 
                 # Save if path provided
                 if save_path:
+                    print(f"🔍 DEBUG: Attempting to save plot to: {save_path}")
+                    # Ensure directory exists
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                    print(f"LR finder plot saved to: {save_path}")
+                    
+                    # Verify file was created
+                    if os.path.exists(save_path):
+                        file_size = os.path.getsize(save_path)
+                        print(f"✅ LR finder plot saved to: {save_path} ({file_size} bytes)")
+                    else:
+                        print(f"❌ Failed to create plot file at: {save_path}")
+                else:
+                    print("🔍 DEBUG: No save_path provided, plot not saved to disk")
             else:
-                print("Warning: Could not create matplotlib figure")
+                print("❌ Warning: Could not create matplotlib figure")
                 
         except Exception as e:
-            print(f"Warning: Could not create plot: {e}")
+            print(f"❌ Warning: Could not create plot: {e}")
+            import traceback
+            print("🔍 DEBUG: Full traceback:")
+            traceback.print_exc()
             fig = None
     
     # Reset model and optimizer to original state

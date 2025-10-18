@@ -240,8 +240,8 @@ def run_config(config_name, data_dir="./data", dry_run=False, disable_wandb=Fals
         if "--amp" in config.get("flags", []):
             print("Note: AMP is enabled by default in LR finder")
     else:
-        # Use train_with_lr.py for training configs as it supports auto_lr
-        script = "train_with_lr.py"
+        # Use main.py for training configs as it supports all arguments including auto_lr
+        script = "main.py"
         cmd = build_command(config_name, config, data_dir, script, disable_wandb, manual_lr, auto_lr)
     
     print("Command:")

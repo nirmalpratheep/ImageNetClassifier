@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import os
+import json
 from datetime import datetime
 
 from preprocess import get_data_loaders
@@ -57,6 +58,14 @@ def get_device(prefer_cuda: bool = True) -> torch.device:
     if prefer_cuda and torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
+
+def load_suggested_lr(lr_info_path: str = "./outputs/suggested_lr.json"):
+    """Load suggested learning rate from LR finder output."""
+    if os.path.exists(lr_info_path):
+        with open(lr_info_path, 'r') as f:
+            lr_info = json.load(f)
+            return lr_info.get('suggested_lr', None)
+    return None
 
 
 def build_model(device: torch.device, num_classes: int = 1000):
@@ -129,7 +138,11 @@ def main():
     parser = argparse.ArgumentParser(description="Image Classification Training")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
-    parser.add_argument("--lr", type=float, default=0.1, help="Learning rate")
+    # Learning rate arguments (mutually exclusive)
+    lr_group = parser.add_mutually_exclusive_group()
+    lr_group.add_argument("--lr", type=float, default=0.1, help="Learning rate")
+    lr_group.add_argument("--auto_lr", action="store_true", help="Auto-load learning rate from suggested_lr.json (from LR finder)")
+    
     parser.add_argument("--momentum", type=float, default=0.9, help="SGD momentum")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for regularization")
     parser.add_argument("--step_size", type=int, default=15, help="Step size for StepLR scheduler")
@@ -189,6 +202,21 @@ def main():
     parser.add_argument("--wandb_notes", type=str, default=None, help="Notes/description for the wandb run")
 
     args = parser.parse_args()
+    
+    # Handle auto-lr loading
+    if args.auto_lr:
+        lr_info_path = "./outputs/suggested_lr.json"
+        suggested_lr = load_suggested_lr(lr_info_path)
+        if suggested_lr is None:
+            print("❌ Error: Could not find suggested_lr.json file for --auto_lr")
+            print("   Please run LR finder first or specify --lr manually")
+            print(f"   Expected file: {lr_info_path}")
+            return 1
+        args.lr = suggested_lr
+        print(f"📖 Auto-loaded learning rate from LR finder: {args.lr:.2e}")
+    else:
+        print(f"📖 Using manual learning rate: {args.lr:.2e}")
+    
     set_seed(42)
     device = get_device(prefer_cuda=not args.no_cuda)
     

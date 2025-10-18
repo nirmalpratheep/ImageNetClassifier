@@ -185,24 +185,8 @@ def main():
             json.dump(lr_info, f, indent=2)
         
         print(f"\n✅ Clean LR Finder completed successfully!")
-        
-        # Debug: Check file existence
-        plot_file = os.path.join(args.output_dir, 'lr_finder_clean_imagenet.png')
-        plot_exists = os.path.exists(plot_file)
-        json_exists = os.path.exists(lr_info_path)
-        
-        print(f"📊 Plot path: {plot_file}")
-        print(f"📊 Plot exists: {plot_exists}")
-        if plot_exists:
-            plot_size = os.path.getsize(plot_file)
-            print(f"📊 Plot size: {plot_size} bytes")
-        
-        print(f"💾 JSON path: {lr_info_path}")  
-        print(f"💾 JSON exists: {json_exists}")
-        if json_exists:
-            json_size = os.path.getsize(lr_info_path)
-            print(f"💾 JSON size: {json_size} bytes")
-            
+        print(f"📊 Plot saved to: {os.path.join(args.output_dir, 'lr_finder_clean_imagenet.png')}")
+        print(f"💾 LR info saved to: {lr_info_path}")
         print(f"🎯 Suggested LR: {suggested_lr:.2e}")
         print(f"💡 Tip: Use the suggested LR (or slightly lower) for training")
         print(f"🚀 Next: Run training with --lr {suggested_lr:.2e} or use train_with_lr.py --auto_lr")

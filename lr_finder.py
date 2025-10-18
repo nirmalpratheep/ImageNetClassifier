@@ -190,37 +190,27 @@ def find_lr(
     fig = None
     if plot:
         try:
-            print(f"🔍 DEBUG: Creating LR finder plot...")
-            print(f"🔍 DEBUG: Matplotlib backend: {matplotlib.get_backend()}")
-            print(f"🔍 DEBUG: Save path: {save_path}")
-            
             # Use the built-in plot method from torch-lr-finder
             fig_result = lr_finder.plot(skip_start=10, skip_end=5)
             
             # Handle both tuple and figure returns
             if isinstance(fig_result, tuple):
                 fig = fig_result[0] if fig_result else None
-                print(f"🔍 DEBUG: Plot returned tuple, extracted figure: {fig is not None}")
             else:
                 fig = fig_result
-                print(f"🔍 DEBUG: Plot returned figure directly: {fig is not None}")
             
             if fig is not None:
-                print(f"🔍 DEBUG: Figure type: {type(fig)}")
-                
                 # Handle both Figure and Axes objects
                 if hasattr(fig, 'gca'):
                     # It's a Figure object
                     ax = fig.gca()
-                    print(f"🔍 DEBUG: Using Figure.gca() to get axes")
                 elif hasattr(fig, 'axvline'):
                     # It's already an Axes object
                     ax = fig
-                    print(f"🔍 DEBUG: Using Axes object directly")
                     # Get the figure from the axes for saving
                     fig = ax.figure
                 else:
-                    print(f"❌ Unknown plot object type: {type(fig)}")
+                    print(f"Warning: Unknown plot object type: {type(fig)}")
                     ax = None
                 
                 if ax is not None:
@@ -231,7 +221,6 @@ def find_lr(
                     
                     # Save if path provided
                     if save_path:
-                        print(f"🔍 DEBUG: Attempting to save plot to: {save_path}")
                         # Ensure directory exists
                         os.makedirs(os.path.dirname(save_path), exist_ok=True)
                         
@@ -240,20 +229,14 @@ def find_lr(
                         
                         # Verify file was created
                         if os.path.exists(save_path):
-                            file_size = os.path.getsize(save_path)
-                            print(f"✅ LR finder plot saved to: {save_path} ({file_size} bytes)")
+                            print(f"LR finder plot saved to: {save_path}")
                         else:
-                            print(f"❌ Failed to create plot file at: {save_path}")
-                    else:
-                        print("🔍 DEBUG: No save_path provided, plot not saved to disk")
+                            print(f"Warning: Failed to create plot file at: {save_path}")
             else:
-                print("❌ Warning: Could not create matplotlib figure")
+                print("Warning: Could not create matplotlib figure")
                 
         except Exception as e:
-            print(f"❌ Warning: Could not create plot: {e}")
-            import traceback
-            print("🔍 DEBUG: Full traceback:")
-            traceback.print_exc()
+            print(f"Warning: Could not create plot: {e}")
             fig = None
     
     # Reset model and optimizer to original state
@@ -421,36 +404,26 @@ def find_lr_advanced(
     fig = None
     if plot:
         try:
-            print(f"🔍 DEBUG: Creating advanced LR finder plot...")
-            print(f"🔍 DEBUG: Matplotlib backend: {matplotlib.get_backend()}")
-            print(f"🔍 DEBUG: Save path: {save_path}")
-            
             fig_result = lr_finder.plot(skip_start=10, skip_end=5)
             
             # Handle both tuple and figure returns
             if isinstance(fig_result, tuple):
                 fig = fig_result[0] if fig_result else None
-                print(f"🔍 DEBUG: Plot returned tuple, extracted figure: {fig is not None}")
             else:
                 fig = fig_result
-                print(f"🔍 DEBUG: Plot returned figure directly: {fig is not None}")
             
             if fig is not None:
-                print(f"🔍 DEBUG: Advanced - Figure type: {type(fig)}")
-                
                 # Handle both Figure and Axes objects
                 if hasattr(fig, 'gca'):
                     # It's a Figure object
                     ax = fig.gca()
-                    print(f"🔍 DEBUG: Advanced - Using Figure.gca() to get axes")
                 elif hasattr(fig, 'axvline'):
                     # It's already an Axes object
                     ax = fig
-                    print(f"🔍 DEBUG: Advanced - Using Axes object directly")
                     # Get the figure from the axes for saving
                     fig = ax.figure
                 else:
-                    print(f"❌ Advanced - Unknown plot object type: {type(fig)}")
+                    print(f"Warning: Unknown plot object type: {type(fig)}")
                     ax = None
                 
                 if ax is not None:
@@ -463,7 +436,6 @@ def find_lr_advanced(
                     
                     # Save if path provided
                     if save_path:
-                        print(f"🔍 DEBUG: Advanced - Attempting to save plot to: {save_path}")
                         # Ensure directory exists
                         os.makedirs(os.path.dirname(save_path), exist_ok=True)
                         
@@ -472,20 +444,14 @@ def find_lr_advanced(
                         
                         # Verify file was created
                         if os.path.exists(save_path):
-                            file_size = os.path.getsize(save_path)
-                            print(f"✅ Advanced LR finder plot saved to: {save_path} ({file_size} bytes)")
+                            print(f"Advanced LR finder plot saved to: {save_path}")
                         else:
-                            print(f"❌ Advanced - Failed to create plot file at: {save_path}")
-                    else:
-                        print("🔍 DEBUG: Advanced - No save_path provided, plot not saved to disk")
+                            print(f"Warning: Failed to create plot file at: {save_path}")
             else:
-                print("❌ Warning: Could not create matplotlib figure")
+                print("Warning: Could not create matplotlib figure")
                 
         except Exception as e:
-            print(f"❌ Warning: Could not create plot: {e}")
-            import traceback
-            print("🔍 DEBUG: Full traceback:")
-            traceback.print_exc()
+            print(f"Warning: Could not create plot: {e}")
             fig = None
     
     # Reset model and optimizer to original state

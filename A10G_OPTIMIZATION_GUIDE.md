@@ -1,5 +1,44 @@
 # A10G GPU Optimization Guide
 
+## Commands to launch g5.2xlarge instance on ec2
+```bash
+# Start instance
+aws ec2 run-instances \
+  --image-id ami-0ac1f653c5b6af751 \
+  --instance-type g5.2xlarge \
+  --key-name aws-kp-lvboy \
+  --security-group-ids sg-1c81e178 \
+  --subnet-id subnet-006eed59 \
+  --instance-market-options '{
+    "MarketType": "spot",
+    "SpotOptions": {
+      "MaxPrice": "0.55",
+      "SpotInstanceType": "one-time",
+      "InstanceInterruptionBehavior": "terminate"
+    }
+  }' \
+  --block-device-mappings '[{
+    "DeviceName": "/dev/sda1",
+    "Ebs": {"VolumeSize": 100, "VolumeType": "gp3"}
+  }]' \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=resnet50-validation},{Key=Project,Value=mosaic-resnet50}]' \
+  --region us-east-1
+
+# Get Running Instance ID
+INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=resnet50-validation" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[0].Instances[0].InstanceId' \
+  --output text --region us-east-1 --profile personal)
+
+# Attach volume
+aws ec2 attach-volume \
+  --volume-id $VOLUME_ID \
+  --instance-id $INSTANCE_ID \
+  --device /dev/sdf \
+  --region us-east-1 \
+  --profile personal
+```
+
 ## 🚀 **Quick Start for Maximum Performance**
 
 Your **g5.2xlarge** instance with **A10G GPU (24GB VRAM)** is optimized for high-performance ImageNet training.
@@ -28,10 +67,10 @@ python configs_a10g_optimized.py lr_finder --data_dir ./data --no_wandb
 ```bash
 python configs_a10g_optimized.py lr_finder --data_dir ./data
 ```
-- **Batch Size**: 256 (OOM-safe LR finding)
-- **Samples**: 5,000 (fast iteration)
+- **Batch Size**: 128 (OOM-safe LR finding)
+- **Samples**: 200,000 (fast iteration)
 - **Workers**: 8 
-- **Features**: AMP enabled, 300 LR iterations, **Wandb logging**
+- **Features**: AMP enabled, 800 LR iterations, **Wandb logging**
 - **Output**: `./outputs/lr_finder_clean_imagenet.png` + `suggested_lr.json`
 - **Wandb Project**: `imagenet-lr-finder-a10g`
 

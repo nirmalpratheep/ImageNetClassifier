@@ -206,27 +206,46 @@ def find_lr(
                 print(f"🔍 DEBUG: Plot returned figure directly: {fig is not None}")
             
             if fig is not None:
-                # Add suggested LR line
-                ax = fig.gca()
-                ax.axvline(x=suggested_lr, color='red', linestyle='--', alpha=0.7, 
-                          label=f'Suggested LR: {suggested_lr:.2e}')
-                ax.legend()
+                print(f"🔍 DEBUG: Figure type: {type(fig)}")
                 
-                # Save if path provided
-                if save_path:
-                    print(f"🔍 DEBUG: Attempting to save plot to: {save_path}")
-                    # Ensure directory exists
-                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                    
-                    # Verify file was created
-                    if os.path.exists(save_path):
-                        file_size = os.path.getsize(save_path)
-                        print(f"✅ LR finder plot saved to: {save_path} ({file_size} bytes)")
-                    else:
-                        print(f"❌ Failed to create plot file at: {save_path}")
+                # Handle both Figure and Axes objects
+                if hasattr(fig, 'gca'):
+                    # It's a Figure object
+                    ax = fig.gca()
+                    print(f"🔍 DEBUG: Using Figure.gca() to get axes")
+                elif hasattr(fig, 'axvline'):
+                    # It's already an Axes object
+                    ax = fig
+                    print(f"🔍 DEBUG: Using Axes object directly")
+                    # Get the figure from the axes for saving
+                    fig = ax.figure
                 else:
-                    print("🔍 DEBUG: No save_path provided, plot not saved to disk")
+                    print(f"❌ Unknown plot object type: {type(fig)}")
+                    ax = None
+                
+                if ax is not None:
+                    # Add suggested LR line
+                    ax.axvline(x=suggested_lr, color='red', linestyle='--', alpha=0.7, 
+                              label=f'Suggested LR: {suggested_lr:.2e}')
+                    ax.legend()
+                    
+                    # Save if path provided
+                    if save_path:
+                        print(f"🔍 DEBUG: Attempting to save plot to: {save_path}")
+                        # Ensure directory exists
+                        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                        
+                        # Save using the figure object
+                        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+                        
+                        # Verify file was created
+                        if os.path.exists(save_path):
+                            file_size = os.path.getsize(save_path)
+                            print(f"✅ LR finder plot saved to: {save_path} ({file_size} bytes)")
+                        else:
+                            print(f"❌ Failed to create plot file at: {save_path}")
+                    else:
+                        print("🔍 DEBUG: No save_path provided, plot not saved to disk")
             else:
                 print("❌ Warning: Could not create matplotlib figure")
                 
@@ -417,29 +436,48 @@ def find_lr_advanced(
                 print(f"🔍 DEBUG: Plot returned figure directly: {fig is not None}")
             
             if fig is not None:
-                # Add suggested LR lines
-                ax = fig.gca()
-                ax.axvline(x=min_loss_lr, color='blue', linestyle=':', alpha=0.7, 
-                          label=f'Min Loss LR: {min_loss_lr:.2e}')
-                ax.axvline(x=steepest_lr, color='red', linestyle='--', alpha=0.7, 
-                          label=f'Steepest LR: {steepest_lr:.2e}')
-                ax.legend()
+                print(f"🔍 DEBUG: Advanced - Figure type: {type(fig)}")
                 
-                # Save if path provided
-                if save_path:
-                    print(f"🔍 DEBUG: Attempting to save plot to: {save_path}")
-                    # Ensure directory exists
-                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                    
-                    # Verify file was created
-                    if os.path.exists(save_path):
-                        file_size = os.path.getsize(save_path)
-                        print(f"✅ LR finder plot saved to: {save_path} ({file_size} bytes)")
-                    else:
-                        print(f"❌ Failed to create plot file at: {save_path}")
+                # Handle both Figure and Axes objects
+                if hasattr(fig, 'gca'):
+                    # It's a Figure object
+                    ax = fig.gca()
+                    print(f"🔍 DEBUG: Advanced - Using Figure.gca() to get axes")
+                elif hasattr(fig, 'axvline'):
+                    # It's already an Axes object
+                    ax = fig
+                    print(f"🔍 DEBUG: Advanced - Using Axes object directly")
+                    # Get the figure from the axes for saving
+                    fig = ax.figure
                 else:
-                    print("🔍 DEBUG: No save_path provided, plot not saved to disk")
+                    print(f"❌ Advanced - Unknown plot object type: {type(fig)}")
+                    ax = None
+                
+                if ax is not None:
+                    # Add suggested LR lines
+                    ax.axvline(x=min_loss_lr, color='blue', linestyle=':', alpha=0.7, 
+                              label=f'Min Loss LR: {min_loss_lr:.2e}')
+                    ax.axvline(x=steepest_lr, color='red', linestyle='--', alpha=0.7, 
+                              label=f'Steepest LR: {steepest_lr:.2e}')
+                    ax.legend()
+                    
+                    # Save if path provided
+                    if save_path:
+                        print(f"🔍 DEBUG: Advanced - Attempting to save plot to: {save_path}")
+                        # Ensure directory exists
+                        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                        
+                        # Save using the figure object
+                        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+                        
+                        # Verify file was created
+                        if os.path.exists(save_path):
+                            file_size = os.path.getsize(save_path)
+                            print(f"✅ Advanced LR finder plot saved to: {save_path} ({file_size} bytes)")
+                        else:
+                            print(f"❌ Advanced - Failed to create plot file at: {save_path}")
+                    else:
+                        print("🔍 DEBUG: Advanced - No save_path provided, plot not saved to disk")
             else:
                 print("❌ Warning: Could not create matplotlib figure")
                 

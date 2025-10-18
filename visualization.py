@@ -87,8 +87,26 @@ class MetricsCalculator:
         
         # Top-k accuracy
         if y_pred_proba is not None:
-            metrics['top_5_accuracy'] = top_k_accuracy_score(y_true, y_pred_proba, k=5)
-            metrics['top_3_accuracy'] = top_k_accuracy_score(y_true, y_pred_proba, k=3)
+            try:
+                # Create full label set to handle cases where validation set doesn't contain all classes
+                all_labels = np.arange(self.num_classes)
+                
+                # Only calculate top-k if k <= number of classes
+                if self.num_classes >= 5:
+                    metrics['top_5_accuracy'] = top_k_accuracy_score(y_true, y_pred_proba, k=5, labels=all_labels)
+                else:
+                    metrics['top_5_accuracy'] = metrics['accuracy']  # Fallback for datasets with < 5 classes
+                    
+                if self.num_classes >= 3:
+                    metrics['top_3_accuracy'] = top_k_accuracy_score(y_true, y_pred_proba, k=3, labels=all_labels)
+                else:
+                    metrics['top_3_accuracy'] = metrics['accuracy']  # Fallback for datasets with < 3 classes
+                    
+            except ValueError as e:
+                print(f"Warning: Could not calculate top-k accuracy: {e}")
+                print(f"Using regular accuracy as fallback")
+                metrics['top_5_accuracy'] = metrics['accuracy']
+                metrics['top_3_accuracy'] = metrics['accuracy']
         
         # Per-class metrics
         precision, recall, f1, support = precision_recall_fscore_support(

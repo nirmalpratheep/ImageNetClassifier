@@ -15,7 +15,7 @@ import argparse
 A10G_CONFIGS = {
     "lr_finder": {
         "description": "LR Finder - Optimized for A10G",
-        "batch_size": 512,  # Large batch for stable LR finding
+        "batch_size": 256,  # Large batch for stable LR finding
         "max_samples": 5000,
         "num_workers": 8,
         "flags": ["--amp"],  # Mixed precision for faster computation
@@ -33,7 +33,7 @@ A10G_CONFIGS = {
     
     "sample_training": {
         "description": "Sample Training - Fast iteration on subset",
-        "batch_size": 768,  # Maximize A10G utilization
+        "batch_size": 128,  # Conservative for A10G with ResNet-50
         "max_samples": 25000,
         "epochs": 20,
         "num_workers": 12,
@@ -51,7 +51,7 @@ A10G_CONFIGS = {
     
     "full_training_conservative": {
         "description": "Full Training - Conservative (safe batch size)",
-        "batch_size": 384,  # Conservative for full dataset
+        "batch_size": 64,  # Very conservative for A10G with ResNet-50
         "epochs": 50,
         "num_workers": 16,
         "flags": ["--amp"],
@@ -69,8 +69,8 @@ A10G_CONFIGS = {
     },
     
     "full_training_aggressive": {
-        "description": "Full Training - Aggressive (max batch size)",
-        "batch_size": 512,  # Push A10G to limits
+        "description": "Full Training - Aggressive (higher batch size)",
+        "batch_size": 128,  # Aggressive but safe for A10G with ResNet-50
         "epochs": 50, 
         "num_workers": 16,
         "flags": ["--amp"],
@@ -82,15 +82,15 @@ A10G_CONFIGS = {
         },
         "extra": {
             "max_grad_norm": "1.0",
-            "gradient_accumulation": "2",  # If we need even larger effective batch
+            "gradient_accumulation": "2",  # Effective batch size = 256
             "snapshot_freq": "5",
             "save_best": True
         }
     },
     
     "speed_benchmark": {
-        "description": "Speed Benchmark - Maximum throughput test",
-        "batch_size": 1024,  # Extreme batch size
+        "description": "Speed Benchmark - Maximum safe throughput test",
+        "batch_size": 192,  # Maximum safe batch size for A10G
         "max_samples": 10000,
         "epochs": 3,
         "num_workers": 20,
@@ -134,7 +134,7 @@ def get_system_info():
     except Exception as e:
         return {"error": str(e)}
 
-def build_command(config_name, config, data_dir="./data", script="main.py", disable_wandb=False):
+def build_command(config_name, config, data_dir="./data", script="main.py", disable_wandb=False, manual_lr=None, auto_lr=False):
     """Build optimized command for the configuration"""
     
     cmd = ["uv", "run", "python", script]
@@ -145,6 +145,14 @@ def build_command(config_name, config, data_dir="./data", script="main.py", disa
         cmd.extend(["--epochs", str(config["epochs"])])
     cmd.extend(["--num_workers", str(config["num_workers"])])
     cmd.extend(["--data_dir", data_dir])
+    
+    # Learning rate parameters
+    if manual_lr is not None:
+        cmd.extend(["--lr", str(manual_lr)])
+        print(f"🎯 Using manual learning rate: {manual_lr}")
+    elif auto_lr:
+        cmd.append("--auto_lr")
+        print("🤖 Using auto-detected learning rate from suggested_lr.json")
     
     # Optional parameters
     if "max_samples" in config:
@@ -164,7 +172,8 @@ def build_command(config_name, config, data_dir="./data", script="main.py", disa
         if "tags" in config["wandb"]:
             cmd.extend(["--wandb_tags"] + config["wandb"]["tags"])
         # Auto-generate run name based on config
-        run_name = f"a10g_{config_name}_{config['batch_size']}bs"
+        lr_suffix = f"lr{manual_lr}" if manual_lr else "autolr" if auto_lr else "defaultlr"
+        run_name = f"a10g_{config_name}_{config['batch_size']}bs_{lr_suffix}"
         cmd.extend(["--wandb_run_name", run_name])
     elif disable_wandb and "wandb" in config and config["wandb"]["use_wandb"]:
         print("ℹ️  Wandb disabled by user flag")
@@ -179,7 +188,7 @@ def build_command(config_name, config, data_dir="./data", script="main.py", disa
     
     return cmd
 
-def run_config(config_name, data_dir="./data", dry_run=False, disable_wandb=False):
+def run_config(config_name, data_dir="./data", dry_run=False, disable_wandb=False, manual_lr=None, auto_lr=False):
     """Run a specific configuration"""
     
     if config_name not in A10G_CONFIGS:
@@ -231,8 +240,9 @@ def run_config(config_name, data_dir="./data", dry_run=False, disable_wandb=Fals
         if "--amp" in config.get("flags", []):
             print("Note: AMP is enabled by default in LR finder")
     else:
-        script = "main.py"
-        cmd = build_command(config_name, config, data_dir, script, disable_wandb)
+        # Use train_with_lr.py for training configs as it supports auto_lr
+        script = "train_with_lr.py"
+        cmd = build_command(config_name, config, data_dir, script, disable_wandb, manual_lr, auto_lr)
     
     print("Command:")
     print(" ".join(cmd))
@@ -270,18 +280,19 @@ def show_recommendations():
     
     print("🚀 PERFORMANCE OPTIMIZATIONS:")
     print("1. Mixed Precision (AMP): Always enabled - A10G has Tensor Cores")
-    print("2. Batch Size: 384-768 recommended, up to 1024 for small datasets")
+    print("2. Batch Size: 64-192 recommended for ResNet-50 (conservative for OOM avoidance)")
     print("3. Workers: 12-16 for data loading (g5.2xlarge has 8 vCPUs)")
-    print("4. Memory: 24GB VRAM allows large batch sizes")
+    print("4. Memory: 24GB VRAM with conservative batch sizes to avoid OOM")
     print("5. Scheduler: OneCycleLR for fast training, Cosine for stability")
+    print("6. Learning Rate: Use --auto_lr after running lr_finder or --lr for manual")
     print()
     
     print("🎯 CONFIGURATION GUIDE:")
-    print("• lr_finder: Find optimal LR with large batch")
-    print("• sample_training: Fast iteration on 25k samples") 
-    print("• full_training_conservative: Safe full training (384 batch)")
-    print("• full_training_aggressive: Max performance (512+ batch)")
-    print("• speed_benchmark: Test maximum throughput")
+    print("• lr_finder: Find optimal LR (256 batch, OOM-safe)")
+    print("• sample_training: Fast iteration on 25k samples (128 batch)") 
+    print("• full_training_conservative: Safe full training (64 batch)")
+    print("• full_training_aggressive: Higher performance (128 batch)")
+    print("• speed_benchmark: Test maximum throughput (192 batch)")
     print()
     
     print("💡 TIPS:")
@@ -289,6 +300,8 @@ def show_recommendations():
     print("• If OOM, reduce batch_size by 25% and retry")
     print("• Use gradient accumulation if you need larger effective batch")
     print("• Enable wandb for experiment tracking on long runs")
+    print("• Learning rates: --auto_lr (from LR finder) or --lr 0.001 (manual)")
+    print("• First run: lr_finder, then training with --auto_lr")
     print("="*70)
 
 def main():
@@ -299,6 +312,12 @@ def main():
     parser.add_argument("--dry_run", action="store_true", help="Show command without executing")
     parser.add_argument("--no_wandb", action="store_true", help="Disable Weights & Biases logging")
     
+    # Learning rate options
+    lr_group = parser.add_mutually_exclusive_group()
+    lr_group.add_argument("--lr", type=float, help="Manual learning rate override")
+    lr_group.add_argument("--auto_lr", action="store_true", 
+                         help="Use learning rate from suggested_lr.json (from LR finder)")
+    
     args = parser.parse_args()
     
     if args.config == "recommendations" or args.config is None:
@@ -308,7 +327,7 @@ def main():
         for name, config in A10G_CONFIGS.items():
             print(f"  {name:<25} - {config['description']}")
     else:
-        success = run_config(args.config, args.data_dir, args.dry_run, args.no_wandb)
+        success = run_config(args.config, args.data_dir, args.dry_run, args.no_wandb, args.lr, args.auto_lr)
         if not success and not args.dry_run:
             exit(1)
 

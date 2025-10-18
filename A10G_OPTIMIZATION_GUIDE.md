@@ -28,7 +28,7 @@ python configs_a10g_optimized.py lr_finder --data_dir ./data --no_wandb
 ```bash
 python configs_a10g_optimized.py lr_finder --data_dir ./data
 ```
-- **Batch Size**: 512 (stable LR finding)
+- **Batch Size**: 256 (OOM-safe LR finding)
 - **Samples**: 5,000 (fast iteration)
 - **Workers**: 8 
 - **Features**: AMP enabled, 300 LR iterations, **Wandb logging**
@@ -37,45 +37,56 @@ python configs_a10g_optimized.py lr_finder --data_dir ./data
 
 ### **🏃 Sample Training (Fast Iteration)**
 ```bash
-python configs_a10g_optimized.py sample_training --data_dir ./data
+# Use auto-detected LR from LR finder
+python configs_a10g_optimized.py sample_training --data_dir ./data --auto_lr
+
+# Or manual LR
+python configs_a10g_optimized.py sample_training --data_dir ./data --lr 0.001
 ```
-- **Batch Size**: 768 (high GPU utilization)
+- **Batch Size**: 128 (conservative for OOM avoidance)
 - **Samples**: 25,000 (manageable subset)
 - **Epochs**: 20
 - **Scheduler**: OneCycleLR (fast convergence)
-- **Features**: **Wandb logging**, AMP enabled
+- **Features**: **Auto-LR support**, **Wandb logging**, AMP enabled
 - **Wandb Project**: `imagenet-sample-training-a10g`
 - **Time**: ~15-30 minutes
 
 ### **🎯 Full Training - Conservative (Recommended)**
 ```bash
-python configs_a10g_optimized.py full_training_conservative --data_dir ./data
-```
-- **Batch Size**: 384 (safe for full dataset)
-- **Epochs**: 50
-- **Workers**: 16
-- **Features**: AMP, **Wandb logging**, Model checkpoints
-- **Wandb Project**: `imagenet-full-training-a10g`
-- **Memory**: ~18GB VRAM usage
+# Use auto-detected LR from LR finder
+python configs_a10g_optimized.py full_training_conservative --data_dir ./data --auto_lr
 
-### **🔥 Full Training - Aggressive (Maximum Performance)**
-```bash
-python configs_a10g_optimized.py full_training_aggressive --data_dir ./data
+# Or manual LR
+python configs_a10g_optimized.py full_training_conservative --data_dir ./data --lr 0.001
 ```
-- **Batch Size**: 512 (push A10G limits)
+- **Batch Size**: 64 (very safe for full dataset, no OOM)
 - **Epochs**: 50
 - **Workers**: 16
-- **Features**: **Wandb logging**, AMP, Model checkpoints
+- **Features**: **Auto-LR support**, AMP, **Wandb logging**, Model checkpoints
 - **Wandb Project**: `imagenet-full-training-a10g`
-- **Memory**: ~22GB VRAM usage
-- **Risk**: May OOM on very large datasets
+- **Memory**: ~12GB VRAM usage
+
+### **🔥 Full Training - Aggressive (Higher Performance)**
+```bash
+# Use auto-detected LR from LR finder
+python configs_a10g_optimized.py full_training_aggressive --data_dir ./data --auto_lr
+
+# Or manual LR
+python configs_a10g_optimized.py full_training_aggressive --data_dir ./data --lr 0.001
+```
+- **Batch Size**: 128 (higher performance, gradient accumulation = effective 256)
+- **Epochs**: 50
+- **Workers**: 16
+- **Features**: **Auto-LR support**, **Wandb logging**, AMP, Model checkpoints
+- **Wandb Project**: `imagenet-full-training-a10g`
+- **Memory**: ~16GB VRAM usage
 
 ### **🏆 Speed Benchmark**
 ```bash
-python configs_a10g_optimized.py speed_benchmark --data_dir ./data
+python configs_a10g_optimized.py speed_benchmark --data_dir ./data --auto_lr
 ```
-- **Batch Size**: 1024 (extreme)
-- **Purpose**: Test maximum throughput
+- **Batch Size**: 192 (maximum safe throughput)
+- **Purpose**: Test safe maximum throughput
 - **Features**: **Wandb logging** for performance metrics
 - **Wandb Project**: `imagenet-benchmark-a10g`
 - **Duration**: ~5-10 minutes
@@ -120,15 +131,16 @@ When you run any training, these are automatically applied:
 - **Memory BW**: 600 GB/s
 - **TensorFloat-32**: Supported (significant speedup)
 
-### **Throughput Estimates**
-| Configuration | Batch Size | Samples/sec | Time/Epoch* |
-|---------------|------------|-------------|-------------|
-| Sample (25k)  | 768        | ~2,000      | 30 sec      |
-| Conservative  | 384        | ~1,200      | 50 sec      |
-| Aggressive    | 512        | ~1,500      | 40 sec      |
-| Benchmark     | 1024       | ~2,500      | 25 sec      |
+### **Throughput Estimates (OOM-Safe)**
+| Configuration | Batch Size | Samples/sec | Time/Epoch* | VRAM Usage |
+|---------------|------------|-------------|-------------|------------|
+| LR Finder     | 256        | ~800        | 75 sec      | ~10GB      |
+| Sample (25k)  | 128        | ~600        | 125 sec     | ~8GB       |
+| Conservative  | 64         | ~400        | 150 sec     | ~6GB       |
+| Aggressive    | 128        | ~600        | 100 sec     | ~12GB      |
+| Benchmark     | 192        | ~850        | 70 sec      | ~14GB      |
 
-*Estimated for 60k samples with data loading optimizations
+*Estimated for 60k samples with data loading optimizations. Conservative estimates to avoid OOM.
 
 ---
 

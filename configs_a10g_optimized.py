@@ -20,6 +20,11 @@ A10G_CONFIGS = {
         "lr_iter": 300,
         "num_workers": 8,
         "flags": ["--amp"],  # Mixed precision for faster computation
+        "wandb": {
+            "use_wandb": True,
+            "project": "imagenet-lr-finder-a10g",
+            "tags": ["a10g", "lr-finder", "optimized"]
+        },
         "extra": {
             "lr_start": "1e-6",
             "lr_end": "1.0"
@@ -34,6 +39,11 @@ A10G_CONFIGS = {
         "num_workers": 12,
         "flags": ["--amp"],
         "scheduler": "onecycle",
+        "wandb": {
+            "use_wandb": True,
+            "project": "imagenet-sample-training-a10g",
+            "tags": ["a10g", "sample-training", "onecycle"]
+        },
         "extra": {
             "max_grad_norm": "1.0"
         }
@@ -44,8 +54,13 @@ A10G_CONFIGS = {
         "batch_size": 384,  # Conservative for full dataset
         "epochs": 50,
         "num_workers": 16,
-        "flags": ["--amp", "--use_wandb"],
+        "flags": ["--amp"],
         "scheduler": "cosine",
+        "wandb": {
+            "use_wandb": True,
+            "project": "imagenet-full-training-a10g",
+            "tags": ["a10g", "full-training", "conservative", "cosine"]
+        },
         "extra": {
             "max_grad_norm": "1.0",
             "snapshot_freq": "5",
@@ -58,8 +73,13 @@ A10G_CONFIGS = {
         "batch_size": 512,  # Push A10G to limits
         "epochs": 50, 
         "num_workers": 16,
-        "flags": ["--amp", "--use_wandb"],
+        "flags": ["--amp"],
         "scheduler": "cosine",
+        "wandb": {
+            "use_wandb": True,
+            "project": "imagenet-full-training-a10g",
+            "tags": ["a10g", "full-training", "aggressive", "cosine"]
+        },
         "extra": {
             "max_grad_norm": "1.0",
             "gradient_accumulation": "2",  # If we need even larger effective batch
@@ -76,6 +96,11 @@ A10G_CONFIGS = {
         "num_workers": 20,
         "flags": ["--amp", "--no_plots"],
         "scheduler": "onecycle",
+        "wandb": {
+            "use_wandb": True,
+            "project": "imagenet-benchmark-a10g",
+            "tags": ["a10g", "benchmark", "throughput"]
+        },
         "extra": {
             "max_grad_norm": "1.0"
         }
@@ -109,14 +134,15 @@ def get_system_info():
     except Exception as e:
         return {"error": str(e)}
 
-def build_command(config_name, config, data_dir="./data", script="main.py"):
+def build_command(config_name, config, data_dir="./data", script="main.py", disable_wandb=False):
     """Build optimized command for the configuration"""
     
     cmd = ["uv", "run", "python", script]
     
     # Core parameters
     cmd.extend(["--batch_size", str(config["batch_size"])])
-    cmd.extend(["--epochs", str(config["epochs"])])
+    if "epochs" in config:
+        cmd.extend(["--epochs", str(config["epochs"])])
     cmd.extend(["--num_workers", str(config["num_workers"])])
     cmd.extend(["--data_dir", data_dir])
     
@@ -131,6 +157,18 @@ def build_command(config_name, config, data_dir="./data", script="main.py"):
     if "flags" in config:
         cmd.extend(config["flags"])
     
+    # Wandb parameters
+    if not disable_wandb and "wandb" in config and config["wandb"]["use_wandb"]:
+        cmd.append("--use_wandb")
+        cmd.extend(["--wandb_project", config["wandb"]["project"]])
+        if "tags" in config["wandb"]:
+            cmd.extend(["--wandb_tags"] + config["wandb"]["tags"])
+        # Auto-generate run name based on config
+        run_name = f"a10g_{config_name}_{config['batch_size']}bs"
+        cmd.extend(["--wandb_run_name", run_name])
+    elif disable_wandb and "wandb" in config and config["wandb"]["use_wandb"]:
+        print("ℹ️  Wandb disabled by user flag")
+    
     # Extra parameters
     if "extra" in config:
         for key, value in config["extra"].items():
@@ -141,7 +179,7 @@ def build_command(config_name, config, data_dir="./data", script="main.py"):
     
     return cmd
 
-def run_config(config_name, data_dir="./data", dry_run=False):
+def run_config(config_name, data_dir="./data", dry_run=False, disable_wandb=False):
     """Run a specific configuration"""
     
     if config_name not in A10G_CONFIGS:
@@ -159,7 +197,10 @@ def run_config(config_name, data_dir="./data", dry_run=False):
     print(f"Workers: {config['num_workers']}")
     if 'max_samples' in config:
         print(f"Max samples: {config['max_samples']:,}")
-    print(f"Epochs: {config['epochs']}")
+    if 'epochs' in config:
+        print(f"Epochs: {config['epochs']}")
+    if 'lr_iter' in config.get('extra', {}):
+        print(f"LR iterations: {config['extra']['lr_iter']}")
     print("="*70)
     
     # Determine which script to use
@@ -174,11 +215,24 @@ def run_config(config_name, data_dir="./data", dry_run=False):
             "--lr_end", config["extra"]["lr_end"],
             "--data_dir", data_dir
         ]
+        
+        # Add wandb arguments for LR finder
+        if not disable_wandb and "wandb" in config and config["wandb"]["use_wandb"]:
+            cmd.append("--use_wandb")
+            cmd.extend(["--wandb_project", config["wandb"]["project"]])
+            if "tags" in config["wandb"]:
+                cmd.extend(["--wandb_tags"] + config["wandb"]["tags"])
+            # Auto-generate run name
+            run_name = f"a10g_lr_finder_{config['batch_size']}bs"
+            cmd.extend(["--wandb_run_name", run_name])
+        elif disable_wandb:
+            print("ℹ️  Wandb disabled by user flag")
+        
         if "--amp" in config.get("flags", []):
             print("Note: AMP is enabled by default in LR finder")
     else:
         script = "main.py"
-        cmd = build_command(config_name, config, data_dir, script)
+        cmd = build_command(config_name, config, data_dir, script, disable_wandb)
     
     print("Command:")
     print(" ".join(cmd))
@@ -243,6 +297,7 @@ def main():
                        choices=list(A10G_CONFIGS.keys()) + ["recommendations", "list"])
     parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
     parser.add_argument("--dry_run", action="store_true", help="Show command without executing")
+    parser.add_argument("--no_wandb", action="store_true", help="Disable Weights & Biases logging")
     
     args = parser.parse_args()
     
@@ -253,7 +308,7 @@ def main():
         for name, config in A10G_CONFIGS.items():
             print(f"  {name:<25} - {config['description']}")
     else:
-        success = run_config(args.config, args.data_dir, args.dry_run)
+        success = run_config(args.config, args.data_dir, args.dry_run, args.no_wandb)
         if not success and not args.dry_run:
             exit(1)
 

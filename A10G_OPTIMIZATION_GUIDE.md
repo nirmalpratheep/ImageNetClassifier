@@ -10,11 +10,14 @@ Your **g5.2xlarge** instance with **A10G GPU (24GB VRAM)** is optimized for high
 # Get optimization recommendations
 python configs_a10g_optimized.py recommendations
 
-# Run optimized LR finder 
+# Run optimized LR finder (with Wandb)
 python configs_a10g_optimized.py lr_finder --data_dir ./data
 
-# Run optimized training
+# Run optimized training (with Wandb) 
 python configs_a10g_optimized.py full_training_aggressive --data_dir ./data
+
+# Disable Wandb if needed
+python configs_a10g_optimized.py lr_finder --data_dir ./data --no_wandb
 ```
 
 ---
@@ -28,8 +31,9 @@ python configs_a10g_optimized.py lr_finder --data_dir ./data
 - **Batch Size**: 512 (stable LR finding)
 - **Samples**: 5,000 (fast iteration)
 - **Workers**: 8 
-- **Features**: AMP enabled, 300 LR iterations
+- **Features**: AMP enabled, 300 LR iterations, **Wandb logging**
 - **Output**: `./outputs/lr_finder_clean_imagenet.png` + `suggested_lr.json`
+- **Wandb Project**: `imagenet-lr-finder-a10g`
 
 ### **🏃 Sample Training (Fast Iteration)**
 ```bash
@@ -39,6 +43,8 @@ python configs_a10g_optimized.py sample_training --data_dir ./data
 - **Samples**: 25,000 (manageable subset)
 - **Epochs**: 20
 - **Scheduler**: OneCycleLR (fast convergence)
+- **Features**: **Wandb logging**, AMP enabled
+- **Wandb Project**: `imagenet-sample-training-a10g`
 - **Time**: ~15-30 minutes
 
 ### **🎯 Full Training - Conservative (Recommended)**
@@ -48,7 +54,8 @@ python configs_a10g_optimized.py full_training_conservative --data_dir ./data
 - **Batch Size**: 384 (safe for full dataset)
 - **Epochs**: 50
 - **Workers**: 16
-- **Features**: AMP, Wandb, Model checkpoints
+- **Features**: AMP, **Wandb logging**, Model checkpoints
+- **Wandb Project**: `imagenet-full-training-a10g`
 - **Memory**: ~18GB VRAM usage
 
 ### **🔥 Full Training - Aggressive (Maximum Performance)**
@@ -58,6 +65,8 @@ python configs_a10g_optimized.py full_training_aggressive --data_dir ./data
 - **Batch Size**: 512 (push A10G limits)
 - **Epochs**: 50
 - **Workers**: 16
+- **Features**: **Wandb logging**, AMP, Model checkpoints
+- **Wandb Project**: `imagenet-full-training-a10g`
 - **Memory**: ~22GB VRAM usage
 - **Risk**: May OOM on very large datasets
 
@@ -67,6 +76,8 @@ python configs_a10g_optimized.py speed_benchmark --data_dir ./data
 ```
 - **Batch Size**: 1024 (extreme)
 - **Purpose**: Test maximum throughput
+- **Features**: **Wandb logging** for performance metrics
+- **Wandb Project**: `imagenet-benchmark-a10g`
 - **Duration**: ~5-10 minutes
 
 ---

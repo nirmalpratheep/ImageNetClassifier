@@ -68,11 +68,17 @@ def load_suggested_lr(lr_info_path: str = "./outputs/suggested_lr.json"):
     return None
 
 
-def build_model(device: torch.device, num_classes: int = 1000):
-    """Build ResNet-50 model for ImageNet-1K."""
+def build_model(device: torch.device, num_classes: int = 1000, use_bce_bias_init: bool = False):
+    """Build ResNet-50 model for ImageNet-1K with optional BCE bias initialization."""
     from model_resnet50 import ResNet50
+    from bce_loss import initialize_bce_bias
     
     model = ResNet50(num_classes=num_classes)
+    
+    # Apply BCE bias initialization if requested
+    if use_bce_bias_init:
+        initialize_bce_bias(model, num_classes)
+    
     return model.to(device)
 
 
@@ -193,6 +199,19 @@ def main():
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Max gradient norm for clipping")
     parser.add_argument("--num_workers", type=int, default=4, help="DataLoader workers")
     
+    # Loss function arguments
+    parser.add_argument("--loss_function", type=str, default="crossentropy", 
+                       choices=["crossentropy", "bce_with_logits"], 
+                       help="Loss function to use (default: crossentropy)")
+    
+    # BCE-specific arguments
+    parser.add_argument("--bce_label_smoothing", type=float, default=0.0, 
+                       help="Label smoothing for BCE loss (default: 0.0)")
+    parser.add_argument("--bce_use_bias_init", action="store_true", 
+                       help="Use BCE bias initialization (-log(n_classes))")
+    parser.add_argument("--bce_pos_weight", type=str, default=None, 
+                       help="Path to positive class weights file for BCE (optional)")
+    
     # Wandb experiment tracking arguments
     parser.add_argument("--use_wandb", action="store_true", help="Enable Weights & Biases logging")
     parser.add_argument("--wandb_project", type=str, default="imagenet-classification", help="Wandb project name")
@@ -305,7 +324,9 @@ def main():
         print(f"Data loading failed: {e}")
         return 1
 
-    model = build_model(device, num_classes=num_classes)
+    # Build model with BCE bias initialization if requested
+    use_bce_bias_init = (args.loss_function == "bce_with_logits" and args.bce_use_bias_init)
+    model = build_model(device, num_classes=num_classes, use_bce_bias_init=use_bce_bias_init)
     print(f"Device: {device}")
     print(f"Model: ResNet-50 for {num_classes} classes")
     
@@ -333,6 +354,30 @@ def main():
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, 
                          weight_decay=args.weight_decay, nesterov=True)
     
+    # Create appropriate criterion based on loss function
+    if args.loss_function == "crossentropy":
+        criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+        print(f"✓ Using CrossEntropyLoss with label smoothing (0.1)")
+        
+    elif args.loss_function == "bce_with_logits":
+        from bce_loss import ImageNetBCEWithLogitsLoss
+        
+        # Load positive weights if specified
+        pos_weight = None
+        if args.bce_pos_weight and os.path.exists(args.bce_pos_weight):
+            pos_weight = torch.load(args.bce_pos_weight)
+            print(f"✓ Loaded positive class weights from {args.bce_pos_weight}")
+        
+        criterion = ImageNetBCEWithLogitsLoss(
+            num_classes=num_classes,
+            label_smoothing=args.bce_label_smoothing,
+            pos_weight=pos_weight
+        )
+        print(f"✓ Using BCE with Logits loss with label smoothing ({args.bce_label_smoothing})")
+        
+    else:
+        raise ValueError(f"Unknown loss function: {args.loss_function}")
+    
     # Run LR finder if requested
     if args.find_lr:
         print("\n" + "="*70)
@@ -345,7 +390,7 @@ def main():
                     model=model,
                     train_loader=train_loader,
                     optimizer=optimizer,
-                    criterion=nn.CrossEntropyLoss(),
+                    criterion=criterion,  # Use the same criterion as main training
                     device=device,
                     start_lr=args.lr_start,
                     end_lr=args.lr_end,
@@ -365,7 +410,7 @@ def main():
                     model=model,
                     train_loader=train_loader,
                     optimizer=optimizer,
-                    criterion=nn.CrossEntropyLoss(),
+                    criterion=criterion,  # Use the same criterion as main training
                     device=device,
                     start_lr=args.lr_start,
                     end_lr=args.lr_end,
@@ -448,8 +493,6 @@ def main():
     else:
         raise ValueError(f"Unknown scheduler: {args.scheduler}")
     
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)  # Add label smoothing
-
     # Initialize training state
     start_epoch = 1
     train_losses = []
@@ -490,7 +533,11 @@ def main():
             "amp_enabled": args.amp,
             "max_grad_norm": args.max_grad_norm,
             "num_classes": num_classes,
-            "input_size": input_size
+            "input_size": input_size,
+            "loss_function": args.loss_function,
+            "bce_label_smoothing": args.bce_label_smoothing if args.loss_function == "bce_with_logits" else None,
+            "bce_bias_init": use_bce_bias_init,
+            "bce_pos_weight_used": args.bce_pos_weight is not None
         }
         
         # Add scheduler-specific config

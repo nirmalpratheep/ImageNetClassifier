@@ -19,6 +19,9 @@ torchsummary>=1.5.1
 # LR Finder (REQUIRED - no fallback implementation)
 torch-lr-finder>=0.2.1
 
+# PyTorch Lightning for minimal trainer
+pytorch-lightning>=2.0.0
+
 # Web interface (optional)
 gradio>=4.0.0
 

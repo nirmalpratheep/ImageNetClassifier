@@ -188,6 +188,8 @@ def main():
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Checkpoint directory")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, 
                    help="Path to checkpoint to resume from")
+    parser.add_argument("--learning_rate", type=float, default=0.1, 
+                   help="Learning rate (ignored if --lr_finder is used)")
     args = parser.parse_args()
     
     print("="*70)
@@ -240,7 +242,7 @@ def main():
     print(f"✓ Val samples: {len(val_loader.dataset)}")
     
     # Create model
-    model = ImageNetLightningModule(num_classes=num_classes)
+    model = ImageNetLightningModule(num_classes=num_classes,learning_rate=args.learning_rate)
     
     # Create checkpoint callback
     checkpoint_callback = ModelCheckpoint(

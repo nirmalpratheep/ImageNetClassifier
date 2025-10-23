@@ -292,7 +292,7 @@ def main():
             val_dataloaders=val_loader,
             min_lr=1e-6,
             max_lr=1.0,
-            num_training=100,  # Number of steps to run
+            num_training=steps_per_epoch,  # Number of steps to run
         )
         
         # Get suggested LR

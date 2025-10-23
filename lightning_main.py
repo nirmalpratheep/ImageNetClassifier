@@ -271,7 +271,7 @@ def main():
         devices=devices,
         precision=precision,  # Mixed precision
         log_every_n_steps=50,
-        val_check_interval=0.5,  # Validate twice per epoch
+        val_check_interval=1.0,     # Validate once per epoch
         gradient_clip_val=args.gradient_clip_val,
         strategy=strategy,
         callbacks=[checkpoint_callback,EarlyStopping(monitor="val_loss", mode="min", patience=10)]

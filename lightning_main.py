@@ -11,9 +11,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-import pytorch_lightning as pl
-from pytorch_lightning.tuner import Tuner
+import lightning.pytorch as pl
+from lightning.pytorch.tuner import Tuner
 from model_resnet50 import ResNet50
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 
 
 class ImageNetLightningModule(pl.LightningModule):
@@ -168,8 +170,10 @@ def main():
     parser.add_argument("--max_epochs", type=int, default=10, help="Max epochs")
     parser.add_argument("--lr_finder", action="store_true", help="Run LR finder")
     parser.add_argument("--plot_lr", action="store_true", help="Plot LR finder results")
-    parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
-    
+    parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clip value")
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Checkpoint directory")
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None, 
+                   help="Path to checkpoint to resume from")
     args = parser.parse_args()
     
     print("="*70)
@@ -182,6 +186,29 @@ def main():
     print(f"LR finder: {args.lr_finder}")
     print("="*70)
     
+    available_gpus = torch.cuda.device_count()
+    if available_gpus > 1:
+        accelerator = "gpu"
+        devices = available_gpus
+        strategy = "ddp"
+        precision = "16-mixed"
+        effective_batch_size = args.batch_size * available_gpus
+        print(f"🚀 Auto-detected {available_gpus} GPUs - using multi-GPU training")
+    elif available_gpus == 1:
+        accelerator = "gpu"
+        devices = 1
+        strategy = "auto"
+        precision = "16-mixed"
+        effective_batch_size = args.batch_size
+        print(f"Auto-detected 1 GPU - using single GPU training")
+    else:
+        accelerator = "cpu"
+        devices = "auto"
+        strategy = "auto"
+        precision = "32"
+        effective_batch_size = args.batch_size
+        print("No GPUs detected - using CPU training")
+    print(f"Effective batch size: {effective_batch_size}")
     # Load data based on dataset type
     if args.dataset == "tinyimagenet":
         print("Loading TinyImageNet data...")
@@ -201,13 +228,37 @@ def main():
     # Create model
     model = ImageNetLightningModule(num_classes=num_classes)
     
+    # Create checkpoint callback
+    checkpoint_callback = ModelCheckpoint(
+    dirpath=args.checkpoint_dir,
+    filename="model-{epoch:02d}-{val_loss:.2f}",
+    save_top_k=3,  
+    every_n_epochs=1,  
+    monitor="val_loss",
+    mode="min",
+    save_on_train_epoch_end=False,
+    save_last=True
+)
+
+    # if available_gpus >0:
+    #     effective_batch_size = args.batch_size * available_gpus
+    #     print(f"Effective batch size with {available_gpus} GPUs: {effective_batch_size}")
+    # else:
+    #     effective_batch_size = args.batch_size
+    #     print
+    #     args.strategy = "auto"
+
     # Create trainer
     trainer = pl.Trainer(
         max_epochs=args.max_epochs,
-        gpus=args.gpus if torch.cuda.is_available() else 0,
-        precision=16,  # Mixed precision
+        accelerator=accelerator,
+        devices=devices,
+        precision=precision,  # Mixed precision
         log_every_n_steps=50,
         val_check_interval=0.5,  # Validate twice per epoch
+        gradient_clip_val=args.gradient_clip_val,
+        strategy=strategy,
+        callbacks=[checkpoint_callback,EarlyStopping(monitor="val_loss", mode="min", patience=10)]
     )
     
     if args.lr_finder:
@@ -242,11 +293,16 @@ def main():
         
         print("="*50)
     
+    if args.resume_from_checkpoint:
+        print(f"\n🚀 Resuming training from checkpoint: {args.resume_from_checkpoint}")
+        trainer.fit(model, train_loader, val_loader, ckpt_path=args.resume_from_checkpoint)
+    else:
+        print(f"\n🚀 Starting training...")
+        trainer.fit(model, train_loader, val_loader)
     # Train the model
-    print(f"\n🚀 Starting training...")
-    trainer.fit(model, train_loader, val_loader)
+   
     
-    print("✅ Training completed!")
+    print("Training completed!")
     print("="*70)
 
 

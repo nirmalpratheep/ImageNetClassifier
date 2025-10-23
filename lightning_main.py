@@ -9,13 +9,53 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 import lightning.pytorch as pl
 from lightning.pytorch.tuner import Tuner
 from model_resnet50 import ResNet50
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from PIL import Image
+
+
+class TinyImageNetDataset(Dataset):
+    """Custom dataset for TinyImageNet with nested images/ folder structure."""
+    
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+        self.samples = []
+        self.classes = []
+        self.class_to_idx = {}
+        
+        # Get all class folders
+        class_folders = sorted([d for d in os.listdir(root_dir) 
+                              if os.path.isdir(os.path.join(root_dir, d))])
+        
+        for idx, class_name in enumerate(class_folders):
+            self.classes.append(class_name)
+            self.class_to_idx[class_name] = idx
+            
+            # Get images from the images subfolder
+            images_dir = os.path.join(root_dir, class_name, 'images')
+            if os.path.exists(images_dir):
+                for img_name in os.listdir(images_dir):
+                    if img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        img_path = os.path.join(images_dir, img_name)
+                        self.samples.append((img_path, idx))
+    
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        img_path, label = self.samples[idx]
+        image = Image.open(img_path).convert('RGB')
+        
+        if self.transform:
+            image = self.transform(image)
+            
+        return image, label
 
 
 class ImageNetLightningModule(pl.LightningModule):
@@ -85,8 +125,8 @@ def get_imagenet_transforms():
 def get_tinyimagenet_transforms():
     """Get TinyImageNet transforms for training and validation."""
     train_transforms = transforms.Compose([
-        transforms.Resize(256),
-        transforms.RandomCrop(224),
+        transforms.Resize(72),
+        transforms.RandomCrop(64),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
         transforms.RandAugment(num_ops=2, magnitude=9),
@@ -95,8 +135,8 @@ def get_tinyimagenet_transforms():
     ])
     
     val_transforms = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize(72),
+        transforms.CenterCrop(64),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
@@ -140,17 +180,17 @@ def get_imagenet_dataloaders(data_dir, batch_size=256, num_workers=4):
 
 
 def get_tinyimagenet_dataloaders(data_dir, batch_size=256, num_workers=4):
-    """Load TinyImageNet format data (train/val folders with class subfolders)."""
+    """Load TinyImageNet format data with nested images/ folder structure."""
     train_transforms, val_transforms = get_tinyimagenet_transforms()
     
-    # Load datasets
-    train_dataset = datasets.ImageFolder(
-        root=os.path.join(data_dir, 'train'),
+    # Load datasets using custom dataset class
+    train_dataset = TinyImageNetDataset(
+        root_dir=os.path.join(data_dir, 'train'),
         transform=train_transforms
     )
     
-    val_dataset = datasets.ImageFolder(
-        root=os.path.join(data_dir, 'val'),
+    val_dataset = TinyImageNetDataset(
+        root_dir=os.path.join(data_dir, 'val'),
         transform=val_transforms
     )
     

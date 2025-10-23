@@ -50,8 +50,15 @@ class ImageNetLightningModule(pl.LightningModule):
         return loss
     
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=1e-4)
-
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.trainer.max_epochs, eta_min=1e-6)
+        return {
+        "optimizer": optimizer,
+        "lr_scheduler": {
+            "scheduler": scheduler,
+            "interval": "epoch"
+        }
+    }
 
 def get_imagenet_transforms():
     """Get ImageNet transforms for training and validation."""
@@ -262,9 +269,20 @@ def main():
     )
     
     if args.lr_finder:
-        print("\n" + "="*50)
         print("RUNNING LR FINDER")
         print("="*50)
+        
+        # Calculate steps for 1 epoch based on effective batch size
+        total_samples = len(train_loader.dataset)
+        steps_per_epoch = total_samples // effective_batch_size
+        if total_samples % effective_batch_size != 0:
+            steps_per_epoch += 1  # Round up if there's a remainder
+        
+        print(f" LR Finder Configuration:")
+        print(f"   Total samples: {total_samples:,}")
+        print(f"   Effective batch size: {effective_batch_size}")
+        print(f"   Steps per epoch: {steps_per_epoch}")
+        print(f"   Will run LR finder for {steps_per_epoch} steps (1 epoch)")
         
         # Run LR finder
         tuner = Tuner(trainer)
@@ -279,7 +297,7 @@ def main():
         
         # Get suggested LR
         suggested_lr = lr_finder.suggestion()
-        print(f"🎯 Suggested learning rate: {suggested_lr:.2e}")
+        print(f"Suggested learning rate: {suggested_lr:.2e}")
         
         # Update model with suggested LR
         model.learning_rate = suggested_lr

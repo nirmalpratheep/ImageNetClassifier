@@ -13,10 +13,12 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 import lightning.pytorch as pl
 from lightning.pytorch.tuner import Tuner
-from model_resnet50 import ResNet50
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import TensorBoardLogger, CSVLogger
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from model_resnet50 import ResNet50
 from PIL import Image
+import numpy as np
 
 
 class TinyImageNetDataset(Dataset):
@@ -59,7 +61,7 @@ class TinyImageNetDataset(Dataset):
 
 
 class ImageNetLightningModule(pl.LightningModule):
-    """Minimal Lightning module for ImageNet classification with LR finder support."""
+    """Enhanced Lightning module for ImageNet classification with comprehensive logging."""
     
     def __init__(self, num_classes=1000, learning_rate=1e-3):
         super().__init__()
@@ -76,8 +78,20 @@ class ImageNetLightningModule(pl.LightningModule):
         logits = self(x)
         loss = self.criterion(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
+        
+        # Log basic metrics
         self.log('train_loss', loss, prog_bar=True)
         self.log('train_acc', acc, prog_bar=True)
+        
+        # Log learning rate
+        current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        self.log('learning_rate', current_lr, prog_bar=True)
+        
+        # Log gradient norms
+        if batch_idx % 50 == 0:  # Log every 50 steps to avoid overhead
+            self._log_gradient_norms()
+            self._log_model_parameters()
+        
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -88,6 +102,40 @@ class ImageNetLightningModule(pl.LightningModule):
         self.log('val_loss', loss, prog_bar=True)
         self.log('val_acc', acc, prog_bar=True)
         return loss
+    
+    def _log_gradient_norms(self):
+        """Log gradient norms for all parameters."""
+        total_norm = 0
+        param_norms = {}
+        
+        for name, param in self.named_parameters():
+            if param.grad is not None:
+                param_norm = param.grad.data.norm(2).item()
+                total_norm += param_norm ** 2
+                # Log individual parameter gradient norms (for key layers)
+                if 'conv' in name or 'fc' in name or 'bn' in name:
+                    param_norms[f'grad_norm/{name}'] = param_norm
+        
+        total_norm = total_norm ** (1. / 2)
+        self.log('grad_norm/total', total_norm)
+        
+        # Log individual parameter norms
+        for name, norm in param_norms.items():
+            self.log(name, norm)
+    
+    def _log_model_parameters(self):
+        """Log model parameter statistics."""
+        param_stats = {}
+        
+        for name, param in self.named_parameters():
+            if 'conv' in name or 'fc' in name or 'bn' in name:  # Log key layers
+                param_stats[f'param_mean/{name}'] = param.data.mean().item()
+                param_stats[f'param_std/{name}'] = param.data.std().item()
+                param_stats[f'param_norm/{name}'] = param.data.norm(2).item()
+        
+        # Log parameter statistics
+        for name, value in param_stats.items():
+            self.log(name, value)
     
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=1e-4)
@@ -226,10 +274,14 @@ def main():
     parser.add_argument("--plot_lr", action="store_true", help="Plot LR finder results")
     parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clip value")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Checkpoint directory")
+    parser.add_argument("--resume", action="store_true", 
+                   help="Resume from latest checkpoint in results/checkpoints/")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, 
-                   help="Path to checkpoint to resume from")
+                   help="Specific checkpoint path to resume from (overrides --resume)")
     parser.add_argument("--learning_rate", type=float, default=0.1, 
                    help="Learning rate (ignored if --lr_finder is used)")
+    parser.add_argument("--results_dir", type=str, default="./results", 
+                   help="Directory to store all results (checkpoints, logs, plots)")
     args = parser.parse_args()
     
     print("="*70)
@@ -240,27 +292,45 @@ def main():
     print(f"Batch size: {args.batch_size}")
     print(f"Max epochs: {args.max_epochs}")
     print(f"LR finder: {args.lr_finder}")
+    print(f"Results directory: {args.results_dir}")
+    print("="*70)
+    
+    # Create results directory structure
+    results_dir = args.results_dir
+    checkpoints_dir = os.path.join(results_dir, "checkpoints")
+    logs_dir = os.path.join(results_dir, "logs")
+    plots_dir = os.path.join(results_dir, "plots")
+    
+    # Create all directories
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
+    os.makedirs(plots_dir, exist_ok=True)
+    
+    print(f"📁 Created results directory structure:")
+    print(f"   Checkpoints: {checkpoints_dir}")
+    print(f"   Logs: {logs_dir}")
+    print(f"   Plots: {plots_dir}")
     print("="*70)
     
     available_gpus = torch.cuda.device_count()
     if available_gpus > 1:
-        accelerator = "gpu"
-        devices = available_gpus
-        strategy = "ddp"
+        training_accelerator = "gpu"
+        training_devices = available_gpus
+        training_strategy = "ddp"
         precision = "16-mixed"
         effective_batch_size = args.batch_size * available_gpus
         print(f"🚀 Auto-detected {available_gpus} GPUs - using multi-GPU training")
     elif available_gpus == 1:
-        accelerator = "gpu"
-        devices = 1
-        strategy = "auto"
+        training_accelerator = "gpu"
+        training_devices = 1
+        training_strategy = "auto"
         precision = "16-mixed"
         effective_batch_size = args.batch_size
         print(f"Auto-detected 1 GPU - using single GPU training")
     else:
-        accelerator = "cpu"
-        devices = "auto"
-        strategy = "auto"
+        training_accelerator = "cpu"
+        training_devices = "auto"
+        training_strategy = "auto"
         precision = "32"
         effective_batch_size = args.batch_size
         print("No GPUs detected - using CPU training")
@@ -286,15 +356,41 @@ def main():
     
     # Create checkpoint callback
     checkpoint_callback = ModelCheckpoint(
-    dirpath=args.checkpoint_dir,
-    filename="model-{epoch:02d}-{val_loss:.2f}",
-    save_top_k=3,  
-    every_n_epochs=1,  
-    monitor="val_loss",
-    mode="min",
-    save_on_train_epoch_end=False,
-    save_last=True
-)
+        dirpath=checkpoints_dir,
+        filename="model-{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}",
+        save_top_k=3,  
+        every_n_epochs=1,  
+        monitor="val_loss",
+        mode="min",
+        save_on_train_epoch_end=False,
+        save_last=True
+    )
+    
+    # Create loggers
+    tensorboard_logger = TensorBoardLogger(
+        save_dir=logs_dir,
+        name="tensorboard_logs",
+        version=None,  # Auto-increment version
+        log_graph=True,  # Log model graph
+        default_hp_metric=False
+    )
+    
+    csv_logger = CSVLogger(
+        save_dir=logs_dir,
+        name="csv_logs",
+        version=None  # Auto-increment version
+    )
+    
+    # Create learning rate monitor callback
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+    
+    print(f"📊 Logging Configuration:")
+    print(f"   TensorBoard logs: {tensorboard_logger.log_dir}")
+    print(f"   CSV logs: {csv_logger.log_dir}")
+    print(f"   Learning rate monitoring: enabled (per step)")
+    print(f"   Gradient norms tracking: enabled (every 50 steps)")
+    print(f"   Model parameters tracking: enabled (every 50 steps)")
+    print("="*70)
 
     # if available_gpus >0:
     #     effective_batch_size = args.batch_size * available_gpus
@@ -304,37 +400,46 @@ def main():
     #     print
     #     args.strategy = "auto"
 
-    # Create trainer
-    trainer = pl.Trainer(
-        max_epochs=args.max_epochs,
-        accelerator=accelerator,
-        devices=devices,
-        precision=precision,  # Mixed precision
-        log_every_n_steps=50,
-        val_check_interval=1.0,     # Validate once per epoch
-        gradient_clip_val=args.gradient_clip_val,
-        strategy=strategy,
-        callbacks=[checkpoint_callback,EarlyStopping(monitor="val_loss", mode="min", patience=10)]
-    )
-    
+
     if args.lr_finder:
         print("RUNNING LR FINDER")
         print("="*50)
         
-        # Calculate steps for 1 epoch based on effective batch size
-        total_samples = len(train_loader.dataset)
-        steps_per_epoch = total_samples // effective_batch_size
-        if total_samples % effective_batch_size != 0:
+        # For LR finder, always use single GPU with auto strategy
+        lr_finder_accelerator = "gpu" if torch.cuda.is_available() else "cpu"
+        lr_finder_devices = 1 if torch.cuda.is_available() else "auto"
+        lr_finder_strategy = "auto"
+        
+        print(f"🔍 LR Finder Configuration:")
+        print(f"   Using single GPU for LR finder (accelerator={lr_finder_accelerator}, devices={lr_finder_devices}, strategy={lr_finder_strategy})")
+        
+        # Create LR finder trainer with single GPU
+        lr_finder_trainer = pl.Trainer(
+            max_epochs=1,  # Just for LR finder
+            accelerator=lr_finder_accelerator,
+            devices=lr_finder_devices,
+            precision=precision,
+            log_every_n_steps=50,
+            val_check_interval=1.0,
+            gradient_clip_val=args.gradient_clip_val,
+            strategy=lr_finder_strategy,
+            enable_checkpointing=False,  # No checkpoints during LR finder
+            enable_progress_bar=True,
+            enable_model_summary=False
+        )
+        total_samples = len(train_loader.dataset)  # Use actual train dataset length
+        lr_finder_batch_size = args.batch_size  # Use original batch size for LR finder
+        steps_per_epoch = total_samples // lr_finder_batch_size
+        if total_samples % lr_finder_batch_size != 0:
             steps_per_epoch += 1  # Round up if there's a remainder
         
-        print(f" LR Finder Configuration:")
         print(f"   Total samples: {total_samples:,}")
-        print(f"   Effective batch size: {effective_batch_size}")
+        print(f"   LR finder batch size: {lr_finder_batch_size}")
         print(f"   Steps per epoch: {steps_per_epoch}")
         print(f"   Will run LR finder for {steps_per_epoch} steps (1 epoch)")
         
         # Run LR finder
-        tuner = Tuner(trainer)
+        tuner = Tuner(lr_finder_trainer)
         lr_finder = tuner.lr_find(
             model,
             train_dataloaders=train_loader,
@@ -354,22 +459,65 @@ def main():
         
         # Plot results if requested
         if args.plot_lr:
+            lr_plot_path = os.path.join(plots_dir, "lr_finder_plot.png")
             fig = lr_finder.plot(suggest=True)
-            fig.savefig("lr_finder_plot.png", dpi=300, bbox_inches='tight')
-            print("📊 LR finder plot saved to: lr_finder_plot.png")
+            fig.savefig(lr_plot_path, dpi=300, bbox_inches='tight')
+            print(f"📊 LR finder plot saved to: {lr_plot_path}")
         
         print("="*50)
+        
+    print(f"\n🚀 Creating training trainer with {training_devices} device(s)...")
+    trainer = pl.Trainer(
+        max_epochs=args.max_epochs,
+        accelerator=training_accelerator,
+        devices=training_devices,
+        precision=precision,
+        log_every_n_steps=50,
+        val_check_interval=1.0,
+        gradient_clip_val=args.gradient_clip_val,
+        strategy=training_strategy,
+        default_root_dir=logs_dir,
+        logger=[tensorboard_logger, csv_logger],
+        callbacks=[
+            checkpoint_callback, 
+            EarlyStopping(monitor="val_loss", mode="min", patience=10),
+            lr_monitor
+        ]
+    )
     
+    # Handle checkpoint resuming
+    checkpoint_path = None
     if args.resume_from_checkpoint:
-        print(f"\n🚀 Resuming training from checkpoint: {args.resume_from_checkpoint}")
-        trainer.fit(model, train_loader, val_loader, ckpt_path=args.resume_from_checkpoint)
+        checkpoint_path = args.resume_from_checkpoint
+        print(f"\nResuming training from specified checkpoint: {checkpoint_path}")
+    elif args.resume:
+        # Find the latest checkpoint in checkpoints directory
+        import glob
+        checkpoint_files = glob.glob(os.path.join(checkpoints_dir, "*.ckpt"))
+        if checkpoint_files:
+            # Sort by modification time, get the latest
+            checkpoint_path = max(checkpoint_files, key=os.path.getmtime)
+            print(f"\nResuming training from latest checkpoint: {checkpoint_path}")
+        else:
+            print(f"\nNo checkpoints found in {checkpoints_dir}, starting fresh training...")
+    
+    if checkpoint_path:
+        trainer.fit(model, train_loader, val_loader, ckpt_path=checkpoint_path)
     else:
         print(f"\n🚀 Starting training...")
         trainer.fit(model, train_loader, val_loader)
-    # Train the model
-   
     
     print("Training completed!")
+    print("="*70)
+    print(f"📁 All results saved to: {results_dir}")
+    print(f"   Checkpoints: {checkpoints_dir}")
+    print(f"   Logs: {logs_dir}")
+    print(f"   Plots: {plots_dir}")
+    print(f"   TensorBoard logs: {tensorboard_logger.log_dir}")
+    print(f"   CSV logs: {csv_logger.log_dir}")
+    print("="*70)
+    print("📊 To view TensorBoard logs, run:")
+    print(f"   tensorboard --logdir {tensorboard_logger.log_dir}")
     print("="*70)
 
 

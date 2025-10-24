@@ -83,9 +83,9 @@ class ImageNetLightningModule(pl.LightningModule):
         self.log('train_loss', loss, prog_bar=True)
         self.log('train_acc', acc, prog_bar=True)
         
-        # Log learning rate
-        current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
-        self.log('learning_rate', current_lr, prog_bar=True)
+        # Log learning rate-> taken care of by lr_monitor callback
+        # current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        # self.log('learning_rate', current_lr, prog_bar=True)
         
         # Log gradient norms
         if batch_idx % 50 == 0:  # Log every 50 steps to avoid overhead
@@ -317,14 +317,14 @@ def main():
         training_accelerator = "gpu"
         training_devices = available_gpus
         training_strategy = "ddp"
-        precision = "16-mixed"
+        precision = "bf16-mixed"
         effective_batch_size = args.batch_size * available_gpus
         print(f"🚀 Auto-detected {available_gpus} GPUs - using multi-GPU training")
     elif available_gpus == 1:
         training_accelerator = "gpu"
         training_devices = 1
         training_strategy = "auto"
-        precision = "16-mixed"
+        precision = "bf16-mixed"
         effective_batch_size = args.batch_size
         print(f"Auto-detected 1 GPU - using single GPU training")
     else:
@@ -370,15 +370,15 @@ def main():
     tensorboard_logger = TensorBoardLogger(
         save_dir=logs_dir,
         name="tensorboard_logs",
-        version=None,  # Auto-increment version
-        log_graph=True,  # Log model graph
+        version=None,  
+        log_graph=True, 
         default_hp_metric=False
     )
     
     csv_logger = CSVLogger(
         save_dir=logs_dir,
         name="csv_logs",
-        version=None  # Auto-increment version
+        version=None  
     )
     
     # Create learning rate monitor callback
@@ -443,7 +443,6 @@ def main():
         lr_finder = tuner.lr_find(
             model,
             train_dataloaders=train_loader,
-            val_dataloaders=val_loader,
             min_lr=1e-6,
             max_lr=1.0,
             num_training=steps_per_epoch,  # Number of steps to run
@@ -477,6 +476,7 @@ def main():
         gradient_clip_val=args.gradient_clip_val,
         strategy=training_strategy,
         default_root_dir=logs_dir,
+        accumulate_grad_batches=1,
         logger=[tensorboard_logger, csv_logger],
         callbacks=[
             checkpoint_callback, 

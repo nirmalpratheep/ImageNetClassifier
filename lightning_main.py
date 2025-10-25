@@ -449,6 +449,12 @@ def main():
                    help="Directory to store all results (checkpoints, logs, plots)")
     args = parser.parse_args()
     
+    # OLD: No tensor cores optimization
+    # NEW: Enable Tensor Cores for A10G and other modern GPUs
+    if torch.cuda.is_available():
+        torch.set_float32_matmul_precision('high')  # Use Tensor Cores for faster matmul
+        print("✓ Enabled high precision matmul (Tensor Cores optimization)")
+    
     # Validate arguments
     if args.label_smoothing > 0 and args.loss_type == "cross_entropy":
         print("Warning: Label smoothing is only supported with BCE losses. Ignoring label_smoothing.")

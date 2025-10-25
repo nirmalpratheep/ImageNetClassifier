@@ -24,6 +24,23 @@ import numpy as np
 import math
 
 
+class FilteredCSVLogger(CSVLogger):
+    """Custom CSV logger that only logs essential metrics + learning rate schedule metrics."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Define which metrics to keep in CSV
+        self.allowed_metrics = {
+            'epoch', 'step', 'train_loss', 'val_loss', 'train_acc', 'val_acc', 'learning_rate',
+            'lr_scheduler_step', 'warmup_lr', 'cosine_lr', 'eta_min', 'warmup_epochs'
+        }
+    
+    def log_metrics(self, metrics, step):
+        """Filter metrics to only include essential + LR schedule metrics."""
+        filtered_metrics = {k: v for k, v in metrics.items() if k in self.allowed_metrics}
+        super().log_metrics(filtered_metrics, step)
+
+
 class TinyImageNetDataset(Dataset):
     """Custom dataset for TinyImageNet with nested images/ folder structure."""
     
@@ -112,9 +129,38 @@ class ImageNetLightningModule(pl.LightningModule):
         self.log('train_loss', loss, prog_bar=True,sync_dist=True)
         self.log('train_acc', acc, prog_bar=True,sync_dist=True)
         
-        # Log learning rate-> taken care of by lr_monitor callback
-        # current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
-        # self.log('learning_rate', current_lr, prog_bar=True)
+        # Log learning rate schedule metrics
+        current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        self.log('learning_rate', current_lr, prog_bar=True)
+        
+        # Log LR schedule parameters
+        self.log('lr_scheduler_step', self.trainer.current_epoch)
+        self.log('warmup_epochs', self.warmup_epochs)
+        self.log('eta_min', self.eta_min)
+        
+        # Log warmup and cosine LR if applicable
+        if self.warmup_epochs > 0 and self.trainer.current_epoch < self.warmup_epochs:
+            # During warmup phase
+            warmup_progress = self.trainer.current_epoch / self.warmup_epochs
+            warmup_lr = self.warmup_start_lr + (self.learning_rate - self.warmup_start_lr) * warmup_progress
+            self.log('warmup_lr', warmup_lr)
+            self.log('cosine_lr', 0.0)  # Not in cosine phase yet
+        else:
+            # During cosine annealing phase
+            self.log('warmup_lr', 0.0)  # Not in warmup phase
+            if self.warmup_epochs > 0:
+                cosine_epoch = self.trainer.current_epoch - self.warmup_epochs
+                cosine_epochs = self.trainer.max_epochs - self.warmup_epochs
+                cosine_progress = cosine_epoch / cosine_epochs
+                cosine_factor = 0.5 * (1 + math.cos(math.pi * cosine_progress))
+                cosine_lr = self.eta_min + (self.learning_rate - self.eta_min) * cosine_factor
+                self.log('cosine_lr', cosine_lr)
+            else:
+                # No warmup, direct cosine annealing
+                cosine_progress = self.trainer.current_epoch / self.trainer.max_epochs
+                cosine_factor = 0.5 * (1 + math.cos(math.pi * cosine_progress))
+                cosine_lr = self.eta_min + (self.learning_rate - self.eta_min) * cosine_factor
+                self.log('cosine_lr', cosine_lr)
         
         # Log gradient norms
         if batch_idx % 50 == 0:  # Log every 50 steps to avoid overhead
@@ -534,7 +580,7 @@ def main():
         default_hp_metric=False
     )
     
-    csv_logger = CSVLogger(
+    csv_logger = FilteredCSVLogger(
         save_dir=logs_dir,
         name="csv_logs",
         version=None  
@@ -652,7 +698,7 @@ def main():
         logger=[tensorboard_logger, csv_logger],
         callbacks=[
             checkpoint_callback, 
-            EarlyStopping(monitor="val_loss", mode="min", patience=10),
+            EarlyStopping(monitor="val_loss", mode="min", patience=10,strict=False),
             lr_monitor
         ] + ([augmentation_callback] if augmentation_callback is not None else [])
     )

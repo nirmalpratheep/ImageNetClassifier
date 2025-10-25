@@ -17,8 +17,10 @@ from lightning.pytorch.loggers import TensorBoardLogger, CSVLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from model_resnet50 import ResNet50
+from bce_loss import create_bce_criterion, initialize_bce_bias, compare_loss_scaling
 from PIL import Image
 import numpy as np
+import math
 
 
 class TinyImageNetDataset(Dataset):
@@ -63,12 +65,28 @@ class TinyImageNetDataset(Dataset):
 class ImageNetLightningModule(pl.LightningModule):
     """Enhanced Lightning module for ImageNet classification with comprehensive logging."""
     
-    def __init__(self, num_classes=1000, learning_rate=1e-3):
+    def __init__(self, num_classes=1000, learning_rate=1e-3, loss_type="cross_entropy", 
+                 label_smoothing=0.0, warmup_epochs=5, warmup_start_lr=1e-6, eta_min=1e-6):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
+        self.num_classes = num_classes
+        self.warmup_epochs = warmup_epochs
+        self.warmup_start_lr = warmup_start_lr
+        self.eta_min = eta_min
         self.model = ResNet50(num_classes=num_classes)
-        self.criterion = nn.CrossEntropyLoss()
+        
+        # Create loss function based on type
+        if loss_type == "cross_entropy":
+            self.criterion = nn.CrossEntropyLoss()
+        else:
+            # Use BCE loss with proper scaling
+            bce_loss_type = "bce" if loss_type == "bce" else "bce_with_logits"
+            self.criterion = create_bce_criterion(
+                num_classes=num_classes,
+                loss_type=bce_loss_type,
+                label_smoothing=label_smoothing
+            )
         
     def forward(self, x):
         return self.model(x)
@@ -137,16 +155,51 @@ class ImageNetLightningModule(pl.LightningModule):
         for name, value in param_stats.items():
             self.log(name, value)
     
+    def _create_warmup_cosine_scheduler(self, optimizer):
+        """Create a combined warmup + cosine annealing scheduler."""
+        def lr_lambda(epoch):
+            if epoch < self.warmup_epochs:
+                # Linear warmup from warmup_start_lr to learning_rate
+                warmup_progress = epoch / self.warmup_epochs
+                warmup_lr = self.warmup_start_lr + (self.learning_rate - self.warmup_start_lr) * warmup_progress
+                return warmup_lr / self.learning_rate  # Normalize by base LR
+            
+            else:
+                # Cosine annealing from learning_rate to eta_min
+                cosine_epoch = epoch - self.warmup_epochs
+                cosine_epochs = self.trainer.max_epochs - self.warmup_epochs
+                
+                # Cosine annealing formula (pure Python)
+                cosine_progress = cosine_epoch / cosine_epochs
+                cosine_factor = 0.5 * (1 + math.cos(math.pi * cosine_progress))
+                
+                # Scale from learning_rate to eta_min
+                cosine_lr = self.eta_min + (self.learning_rate - self.eta_min) * cosine_factor
+                return cosine_lr / self.learning_rate  # Normalize by base LR
+        
+        return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+    
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=1e-4)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.trainer.max_epochs, eta_min=1e-6)
+        
+        if self.warmup_epochs > 0:
+            # Use warmup + cosine scheduler
+            scheduler = self._create_warmup_cosine_scheduler(optimizer)
+        else:
+            # Use standard cosine scheduler (current behavior)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, 
+                T_max=self.trainer.max_epochs, 
+                eta_min=self.eta_min
+            )
+        
         return {
-        "optimizer": optimizer,
-        "lr_scheduler": {
-            "scheduler": scheduler,
-            "interval": "epoch"
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch"
+            }
         }
-    }
 
 def get_imagenet_transforms():
     """Get ImageNet transforms for training and validation."""
@@ -280,9 +333,44 @@ def main():
                    help="Specific checkpoint path to resume from (overrides --resume)")
     parser.add_argument("--learning_rate", type=float, default=0.1, 
                    help="Learning rate (ignored if --lr_finder is used)")
+    parser.add_argument("--loss_type", type=str, default="cross_entropy", 
+                   choices=["cross_entropy", "bce", "bce_with_logits"],
+                   help="Loss function type")
+    parser.add_argument("--label_smoothing", type=float, default=0.0,
+                   help="Label smoothing factor (only for BCE losses)")
+    parser.add_argument("--init_bce_bias", action="store_true",
+                   help="Initialize BCE bias to -log(n_classes) for optimal performance")
+    parser.add_argument("--warmup_epochs", type=int, default=0,
+                   help="Number of warmup epochs (0 = no warmup)")
+    parser.add_argument("--warmup_start_lr", type=float, default=1e-6,
+                   help="Starting learning rate for warmup phase")
+    parser.add_argument("--eta_min", type=float, default=1e-6,
+                   help="Minimum learning rate for cosine annealing")
     parser.add_argument("--results_dir", type=str, default="./results", 
                    help="Directory to store all results (checkpoints, logs, plots)")
     args = parser.parse_args()
+    
+    # Validate arguments
+    if args.label_smoothing > 0 and args.loss_type == "cross_entropy":
+        print("Warning: Label smoothing is only supported with BCE losses. Ignoring label_smoothing.")
+        args.label_smoothing = 0.0
+    
+    if args.init_bce_bias and args.loss_type == "cross_entropy":
+        print(" Warning: BCE bias initialization only applies to BCE losses. Ignoring init_bce_bias.")
+        args.init_bce_bias = False
+    
+    # Validate warmup arguments
+    if args.warmup_epochs < 0:
+        print("Warning: warmup_epochs cannot be negative. Setting to 0.")
+        args.warmup_epochs = 0
+    
+    if args.warmup_epochs >= args.max_epochs:
+        print("Warning: warmup_epochs must be less than max_epochs. Setting warmup_epochs to 0.")
+        args.warmup_epochs = 0
+    
+    if args.warmup_start_lr >= args.learning_rate:
+        print("Warning: warmup_start_lr should be less than learning_rate. Adjusting warmup_start_lr.")
+        args.warmup_start_lr = min(args.warmup_start_lr, args.learning_rate * 0.1)
     
     print("="*70)
     print("MINIMAL LIGHTNING TRAINER WITH LR FINDER")
@@ -292,6 +380,14 @@ def main():
     print(f"Batch size: {args.batch_size}")
     print(f"Max epochs: {args.max_epochs}")
     print(f"LR finder: {args.lr_finder}")
+    print(f"Loss function: {args.loss_type}")
+    if args.loss_type in ["bce", "bce_with_logits"]:
+        print(f"Label smoothing: {args.label_smoothing}")
+        print(f"BCE bias initialization: {args.init_bce_bias}")
+    if args.warmup_epochs > 0:
+        print(f"Warmup epochs: {args.warmup_epochs}")
+        print(f"Warmup start LR: {args.warmup_start_lr:.2e}")
+        print(f"Eta min: {args.eta_min:.2e}")
     print(f"Results directory: {args.results_dir}")
     print("="*70)
     
@@ -352,7 +448,39 @@ def main():
     print(f"✓ Val samples: {len(val_loader.dataset)}")
     
     # Create model
-    model = ImageNetLightningModule(num_classes=num_classes,learning_rate=args.learning_rate)
+    model = ImageNetLightningModule(
+        num_classes=num_classes,
+        learning_rate=args.learning_rate,
+        loss_type=args.loss_type,
+        label_smoothing=args.label_smoothing,
+        warmup_epochs=args.warmup_epochs,
+        warmup_start_lr=args.warmup_start_lr,
+        eta_min=args.eta_min
+    )
+    
+    # Apply BCE bias initialization if requested
+    if args.init_bce_bias and args.loss_type in ["bce", "bce_with_logits"]:
+        print(f"🔧 Initializing BCE bias to -log({num_classes}) for optimal performance...")
+        initialize_bce_bias(model.model, num_classes)
+    
+    # Validate BCE loss scaling (optional debug info)
+    if args.loss_type in ["bce", "bce_with_logits"]:
+        print("Validating BCE loss scaling...")
+        # Get a small batch for validation
+        sample_batch = next(iter(train_loader))
+        sample_input, sample_target = sample_batch[0][:4], sample_batch[1][:4]  # Use first 4 samples
+        
+        with torch.no_grad():
+            sample_output = model.model(sample_input)
+            loss_comparison = compare_loss_scaling(model.model, sample_input, sample_target, num_classes)
+            
+        print(f"   CrossEntropy loss: {loss_comparison['cross_entropy']:.4f}")
+        print(f"   BCE loss: {loss_comparison['bce']:.4f}")
+        print(f"   BCE ratio: {loss_comparison['bce_ratio']:.3f}x CrossEntropy")
+        if loss_comparison['bce_ratio'] < 0.1 or loss_comparison['bce_ratio'] > 10.0:
+            print("Warning: BCE loss magnitude seems unusual. Check implementation.")
+        else:
+            print(" BCE loss scaling looks good!")
     
     # Create checkpoint callback
     checkpoint_callback = ModelCheckpoint(

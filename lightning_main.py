@@ -237,7 +237,29 @@ class ImageNetLightningModule(pl.LightningModule):
         return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=1e-4)
+        # Separate parameters into two groups for proper weight decay
+        weight_params = []  # Conv weights, FC weights - WITH weight decay
+        bias_params = []    # Biases, BN parameters - WITHOUT weight decay
+        
+        for name, param in self.named_parameters():
+            if 'weight' in name and ('conv' in name or 'fc' in name):
+                # Conv weights and FC weights
+                weight_params.append(param)
+            else:
+                # Biases and BN parameters (weight, bias)
+                bias_params.append(param)
+        
+        # Create optimizer with different weight decay for each group
+        optimizer = torch.optim.SGD([
+            {'params': weight_params, 'weight_decay': 1e-4},
+            {'params': bias_params, 'weight_decay': 0.0}
+        ], lr=self.learning_rate, momentum=0.9)
+        
+        # Debug logging
+        print(f"🔧 Optimizer Configuration:")
+        print(f"   Weight parameters (with decay): {len(weight_params)}")
+        print(f"   Bias/BN parameters (no decay): {len(bias_params)}")
+        print(f"   Total parameters: {len(weight_params) + len(bias_params)}")
         
         if self.warmup_epochs > 0:
             # Use warmup + cosine scheduler

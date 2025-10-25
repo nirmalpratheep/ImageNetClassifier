@@ -200,7 +200,7 @@ class ImageNetLightningModule(pl.LightningModule):
             # Use standard cosine scheduler (current behavior)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 optimizer, 
-                T_max=self.trainer.max_epochs, 
+                T_max=self.trainer.max_epochs - self.warmup_epochs,
                 eta_min=self.eta_min
             )
         
@@ -495,23 +495,23 @@ def main():
         initialize_bce_bias(model.model, num_classes)
     
     # Validate BCE loss scaling (optional debug info)
-    if args.loss_type in ["bce", "bce_with_logits"]:
-        print("Validating BCE loss scaling...")
-        # Get a small batch for validation
-        sample_batch = next(iter(train_loader))
-        sample_input, sample_target = sample_batch[0][:4], sample_batch[1][:4]  # Use first 4 samples
+    # if args.loss_type in ["bce", "bce_with_logits"]:
+    #     print("Validating BCE loss scaling...")
+    #     # Get a small batch for validation
+    #     sample_batch = next(iter(train_loader))
+    #     sample_input, sample_target = sample_batch[0][:4], sample_batch[1][:4]  # Use first 4 samples
         
-        with torch.no_grad():
-            sample_output = model.model(sample_input)
-            loss_comparison = compare_loss_scaling(model.model, sample_input, sample_target, num_classes)
+    #     with torch.no_grad():
+    #         sample_output = model.model(sample_input)
+    #         loss_comparison = compare_loss_scaling(model.model, sample_input, sample_target, num_classes)
             
-        print(f"   CrossEntropy loss: {loss_comparison['cross_entropy']:.4f}")
-        print(f"   BCE loss: {loss_comparison['bce']:.4f}")
-        print(f"   BCE ratio: {loss_comparison['bce_ratio']:.3f}x CrossEntropy")
-        if loss_comparison['bce_ratio'] < 0.1 or loss_comparison['bce_ratio'] > 10.0:
-            print("Warning: BCE loss magnitude seems unusual. Check implementation.")
-        else:
-            print(" BCE loss scaling looks good!")
+    #     print(f"   CrossEntropy loss: {loss_comparison['cross_entropy']:.4f}")
+    #     print(f"   BCE loss: {loss_comparison['bce']:.4f}")
+    #     print(f"   BCE ratio: {loss_comparison['bce_ratio']:.3f}x CrossEntropy")
+    #     if loss_comparison['bce_ratio'] < 0.1 or loss_comparison['bce_ratio'] > 10.0:
+    #         print("Warning: BCE loss magnitude seems unusual. Check implementation.")
+    #     else:
+    #         print(" BCE loss scaling looks good!")
     
     # Create checkpoint callback
     checkpoint_callback = ModelCheckpoint(

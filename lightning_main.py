@@ -690,7 +690,7 @@ def main():
         devices=training_devices,
         precision=precision,
         log_every_n_steps=50,
-        val_check_interval=2.0,
+        val_check_interval=1.0,
         gradient_clip_val=args.gradient_clip_val,
         strategy=training_strategy,
         default_root_dir=logs_dir,

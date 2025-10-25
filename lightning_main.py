@@ -18,6 +18,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from model_resnet50 import ResNet50
 from bce_loss import create_bce_criterion, initialize_bce_bias, compare_loss_scaling
+from augmentation import MixupCutmixCallback
 from PIL import Image
 import numpy as np
 import math
@@ -94,8 +95,18 @@ class ImageNetLightningModule(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
-        loss = self.criterion(logits, y)
-        acc = (logits.argmax(dim=1) == y).float().mean()
+        
+        # Handle Mixup/CutMix if applied
+        if hasattr(self, '_current_batch') and self._current_batch is not None:
+            # Mixed labels from augmentation
+            _, y_a, y_b, lam = self._current_batch
+            loss = lam * self.criterion(logits, y_a) + (1 - lam) * self.criterion(logits, y_b)
+            # For mixed samples, accuracy is not meaningful, so we skip it
+            acc = torch.tensor(0.0, device=x.device)
+        else:
+            # Normal training
+            loss = self.criterion(logits, y)
+            acc = (logits.argmax(dim=1) == y).float().mean()
         
         # Log basic metrics
         self.log('train_loss', loss, prog_bar=True)
@@ -201,9 +212,9 @@ class ImageNetLightningModule(pl.LightningModule):
             }
         }
 
-def get_imagenet_transforms():
+def get_imagenet_transforms(random_erasing_p=0.0):
     """Get ImageNet transforms for training and validation."""
-    train_transforms = transforms.Compose([
+    train_transforms = [
         transforms.Resize(256),
         transforms.RandomCrop(224),
         transforms.RandomHorizontalFlip(p=0.5),
@@ -211,7 +222,13 @@ def get_imagenet_transforms():
         transforms.RandAugment(num_ops=2, magnitude=9),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    ]
+    
+    # Add Random Erasing if enabled
+    if random_erasing_p > 0:
+        train_transforms.append(transforms.RandomErasing(p=random_erasing_p))
+    
+    train_transforms = transforms.Compose(train_transforms)
     
     val_transforms = transforms.Compose([
         transforms.Resize(256),
@@ -223,9 +240,9 @@ def get_imagenet_transforms():
     return train_transforms, val_transforms
 
 
-def get_tinyimagenet_transforms():
+def get_tinyimagenet_transforms(random_erasing_p=0.0):
     """Get TinyImageNet transforms for training and validation."""
-    train_transforms = transforms.Compose([
+    train_transforms = [
         transforms.Resize(72),
         transforms.RandomCrop(64),
         transforms.RandomHorizontalFlip(p=0.5),
@@ -233,7 +250,13 @@ def get_tinyimagenet_transforms():
         transforms.RandAugment(num_ops=2, magnitude=9),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    ]
+    
+    # Add Random Erasing if enabled
+    if random_erasing_p > 0:
+        train_transforms.append(transforms.RandomErasing(p=random_erasing_p))
+    
+    train_transforms = transforms.Compose(train_transforms)
     
     val_transforms = transforms.Compose([
         transforms.Resize(72),
@@ -245,9 +268,9 @@ def get_tinyimagenet_transforms():
     return train_transforms, val_transforms
 
 
-def get_imagenet_dataloaders(data_dir, batch_size=256, num_workers=4):
+def get_imagenet_dataloaders(data_dir, batch_size=256, num_workers=4, random_erasing_p=0.0):
     """Load ImageNet format data (train/val folders with class subfolders)."""
-    train_transforms, val_transforms = get_imagenet_transforms()
+    train_transforms, val_transforms = get_imagenet_transforms(random_erasing_p)
     
     # Load datasets
     train_dataset = datasets.ImageFolder(
@@ -280,9 +303,9 @@ def get_imagenet_dataloaders(data_dir, batch_size=256, num_workers=4):
     return train_loader, val_loader, len(train_dataset.classes)
 
 
-def get_tinyimagenet_dataloaders(data_dir, batch_size=256, num_workers=4):
+def get_tinyimagenet_dataloaders(data_dir, batch_size=256, num_workers=4, random_erasing_p=0.0):
     """Load TinyImageNet format data with nested images/ folder structure."""
-    train_transforms, val_transforms = get_tinyimagenet_transforms()
+    train_transforms, val_transforms = get_tinyimagenet_transforms(random_erasing_p)
     
     # Load datasets using custom dataset class
     train_dataset = TinyImageNetDataset(
@@ -346,6 +369,14 @@ def main():
                    help="Starting learning rate for warmup phase")
     parser.add_argument("--eta_min", type=float, default=1e-6,
                    help="Minimum learning rate for cosine annealing")
+    parser.add_argument("--random_erasing_p", type=float, default=0.0,
+                   help="Probability of Random Erasing (0.0 = disabled)")
+    parser.add_argument("--mixup_alpha", type=float, default=0.0,
+                   help="Mixup alpha parameter (0.0 = disabled)")
+    parser.add_argument("--cutmix_alpha", type=float, default=0.0,
+                   help="CutMix alpha parameter (0.0 = disabled)")
+    parser.add_argument("--cutmix_prob", type=float, default=0.5,
+                   help="Probability of CutMix vs Mixup")
     parser.add_argument("--results_dir", type=str, default="./results", 
                    help="Directory to store all results (checkpoints, logs, plots)")
     args = parser.parse_args()
@@ -435,12 +466,12 @@ def main():
     if args.dataset == "tinyimagenet":
         print("Loading TinyImageNet data...")
         train_loader, val_loader, num_classes = get_tinyimagenet_dataloaders(
-            args.data_dir, args.batch_size, args.num_workers
+            args.data_dir, args.batch_size, args.num_workers, args.random_erasing_p
         )
     else:  # imagenet
         print("Loading ImageNet data...")
         train_loader, val_loader, num_classes = get_imagenet_dataloaders(
-            args.data_dir, args.batch_size, args.num_workers
+            args.data_dir, args.batch_size, args.num_workers, args.random_erasing_p
         )
     
     print(f"✓ Found {num_classes} classes")
@@ -512,12 +543,25 @@ def main():
     # Create learning rate monitor callback
     lr_monitor = LearningRateMonitor(logging_interval='step')
     
+    # Create augmentation callback if enabled
+    augmentation_callback = None
+    if args.mixup_alpha > 0 or args.cutmix_alpha > 0:
+        augmentation_callback = MixupCutmixCallback(
+            mixup_alpha=args.mixup_alpha,
+            cutmix_alpha=args.cutmix_alpha,
+            cutmix_prob=args.cutmix_prob
+        )
+    
     print(f"📊 Logging Configuration:")
     print(f"   TensorBoard logs: {tensorboard_logger.log_dir}")
     print(f"   CSV logs: {csv_logger.log_dir}")
     print(f"   Learning rate monitoring: enabled (per step)")
     print(f"   Gradient norms tracking: enabled (every 50 steps)")
     print(f"   Model parameters tracking: enabled (every 50 steps)")
+    if args.random_erasing_p > 0:
+        print(f"   Random Erasing: enabled (p={args.random_erasing_p})")
+    if args.mixup_alpha > 0 or args.cutmix_alpha > 0:
+        print(f"   Mixup/CutMix: enabled (mixup_α={args.mixup_alpha}, cutmix_α={args.cutmix_alpha})")
     print("="*70)
 
     # if available_gpus >0:
@@ -610,7 +654,7 @@ def main():
             checkpoint_callback, 
             EarlyStopping(monitor="val_loss", mode="min", patience=10),
             lr_monitor
-        ]
+        ] + ([augmentation_callback] if augmentation_callback is not None else [])
     )
     
     # Handle checkpoint resuming

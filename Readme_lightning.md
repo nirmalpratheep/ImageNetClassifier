@@ -13,4 +13,8 @@ uv run lightning_main.py --data_dir ./data --dataset imagenet --lr_finder --plot
 uv run  lightning_main.py --data_dir ./data --dataset imagenet --loss_type bce_with_logits --label_smoothing 0.1
 # with warmup
 uv run lightning_main.py --data_dir ./data --loss_type bce_with_logits --label_smoothing 0.1 --warmup_epochs 5 --warmup_start_lr 1e-6 --init_bce_bias
+
+# with augmentation
+uv run lightning_main.py --data_dir ./data --loss_type bce_with_logits --label_smoothing 0.1 --warmup_epochs 5 --warmup_start_lr 1e-6 --init_bce_bias --random_erasing_p 0.5 --mixup_alpha 0.2 --cutmix_alpha 1.0 --cutmix_prob 0.5
 ```
+

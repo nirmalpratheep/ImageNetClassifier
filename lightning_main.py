@@ -109,8 +109,8 @@ class ImageNetLightningModule(pl.LightningModule):
             acc = (logits.argmax(dim=1) == y).float().mean()
         
         # Log basic metrics
-        self.log('train_loss', loss, prog_bar=True)
-        self.log('train_acc', acc, prog_bar=True)
+        self.log('train_loss', loss, prog_bar=True,sync_dist=True)
+        self.log('train_acc', acc, prog_bar=True,sync_dist=True)
         
         # Log learning rate-> taken care of by lr_monitor callback
         # current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
@@ -128,8 +128,8 @@ class ImageNetLightningModule(pl.LightningModule):
         logits = self(x)
         loss = self.criterion(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log('val_loss', loss, prog_bar=True)
-        self.log('val_acc', acc, prog_bar=True)
+        self.log('val_loss', loss, prog_bar=True,sync_dist=True)
+        self.log('val_acc', acc, prog_bar=True,sync_dist=True)
         return loss
     
     def _log_gradient_norms(self):
@@ -146,7 +146,7 @@ class ImageNetLightningModule(pl.LightningModule):
                     param_norms[f'grad_norm/{name}'] = param_norm
         
         total_norm = total_norm ** (1. / 2)
-        self.log('grad_norm/total', total_norm)
+        self.log('grad_norm/total', total_norm,sync_dist=True)
         
         # Log individual parameter norms
         for name, norm in param_norms.items():
@@ -164,7 +164,7 @@ class ImageNetLightningModule(pl.LightningModule):
         
         # Log parameter statistics
         for name, value in param_stats.items():
-            self.log(name, value)
+            self.log(name, value,sync_dist=True)
     
     def _create_warmup_cosine_scheduler(self, optimizer):
         """Create a combined warmup + cosine annealing scheduler."""
@@ -343,7 +343,7 @@ def main():
     parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
     parser.add_argument("--dataset", type=str, default="imagenet", choices=["imagenet", "tinyimagenet"], 
                        help="Dataset type: imagenet or tinyimagenet")
-    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=1028, help="Batch size")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers")
     parser.add_argument("--max_epochs", type=int, default=10, help="Max epochs")
     parser.add_argument("--lr_finder", action="store_true", help="Run LR finder")

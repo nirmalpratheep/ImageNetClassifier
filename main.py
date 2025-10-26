@@ -109,13 +109,13 @@ def main():
     parser = argparse.ArgumentParser(description="Image Classification Training")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
-    parser.add_argument("--lr", type=float, default=0.1, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--momentum", type=float, default=0.9, help="SGD momentum")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for regularization")
     parser.add_argument("--step_size", type=int, default=15, help="Step size for StepLR scheduler")
     parser.add_argument("--gamma", type=float, default=0.1, help="Gamma for StepLR scheduler")
     parser.add_argument("--warmup_epochs", type=int, default=0, help="Number of warmup epochs (disabled)")
-    parser.add_argument("--scheduler", type=str, default="cosine", choices=["cosine", "step", "onecycle"], help="Learning rate scheduler")
+    parser.add_argument("--scheduler", type=str, default="onecycle", choices=["cosine", "step", "onecycle"], help="Learning rate scheduler")
     
     # OneCycleLR specific arguments
     parser.add_argument("--onecycle_pct_start", type=float, default=0.3, help="OneCycleLR: percent of cycle for warmup (default: 0.3)")

@@ -386,7 +386,7 @@ def main():
 
         print(
             f"Train Loss: {tr_loss:.4f} | Train Acc: {tr_acc:.2f}% | "
-            f"Test Loss: {te_loss:.4f} | Test Acc: {te_acc:.2f}% | "
+            f"Val Loss: {te_loss:.4f} | Val Acc: {te_acc:.2f}% | "
             f"LR: {current_lr:.6f}"
         )
 
@@ -395,7 +395,7 @@ def main():
         if args.save_best and te_acc > best_test_acc:
             best_test_acc = te_acc
             should_save = True
-            print(f"New best test accuracy: {te_acc:.2f}%")
+            print(f"New best validation accuracy: {te_acc:.2f}%")
         elif not args.save_best and epoch % args.snapshot_freq == 0:
             should_save = True
 

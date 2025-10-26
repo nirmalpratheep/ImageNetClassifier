@@ -105,6 +105,58 @@ def apply_warmup_lr(optimizer, base_lr: float, warmup_factor: float):
         param_group['lr'] = base_lr * warmup_factor
 
 
+class CustomThreePhaseLR:
+    """Custom learning rate scheduler implementing three-phase schedule:
+    Phase 1: base_lr → max_lr over 40% of epochs (warmup/up)
+    Phase 2: max_lr → base_lr over 40% of epochs (cool down)
+    Phase 3: base_lr → min_lr over 20% of epochs (annealing)
+    """
+    def __init__(self, optimizer, base_lr, max_lr, min_lr, phase1_epochs, phase2_epochs, phase3_epochs):
+        self.optimizer = optimizer
+        self.base_lr = base_lr
+        self.max_lr = max_lr
+        self.min_lr = min_lr
+        self.phase1_epochs = phase1_epochs
+        self.phase2_epochs = phase2_epochs
+        self.phase3_epochs = phase3_epochs
+        self.total_epochs = phase1_epochs + phase2_epochs + phase3_epochs
+        self.last_epoch = -1
+    
+    def step(self, epoch=None):
+        if epoch is None:
+            self.last_epoch += 1
+        else:
+            self.last_epoch = epoch
+        
+        current_epoch = self.last_epoch
+        
+        # Determine which phase we're in and calculate LR
+        if current_epoch < self.phase1_epochs:
+            # Phase 1: linear increase from base_lr to max_lr
+            p = current_epoch / self.phase1_epochs
+            lr = self.base_lr + p * (self.max_lr - self.base_lr)
+            self.current_phase = 1
+        elif current_epoch < self.phase1_epochs + self.phase2_epochs:
+            # Phase 2: linear decrease from max_lr back to base_lr
+            p = (current_epoch - self.phase1_epochs) / self.phase2_epochs
+            lr = self.max_lr - p * (self.max_lr - self.base_lr)
+            self.current_phase = 2
+        else:
+            # Phase 3: linear decrease from base_lr to min_lr
+            p = (current_epoch - self.phase1_epochs - self.phase2_epochs) / self.phase3_epochs
+            lr = self.base_lr - p * (self.base_lr - self.min_lr)
+            self.current_phase = 3
+        
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = lr
+    
+    def state_dict(self):
+        return {'last_epoch': self.last_epoch}
+    
+    def load_state_dict(self, state_dict):
+        self.last_epoch = state_dict['last_epoch']
+
+
 def main():
     parser = argparse.ArgumentParser(description="Image Classification Training")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
@@ -115,7 +167,7 @@ def main():
     parser.add_argument("--step_size", type=int, default=15, help="Step size for StepLR scheduler")
     parser.add_argument("--gamma", type=float, default=0.1, help="Gamma for StepLR scheduler")
     parser.add_argument("--warmup_epochs", type=int, default=0, help="Number of warmup epochs (disabled)")
-    parser.add_argument("--scheduler", type=str, default="onecycle", choices=["cosine", "step", "onecycle"], help="Learning rate scheduler")
+    parser.add_argument("--scheduler", type=str, default="onecycle", choices=["cosine", "step", "onecycle"], help="Learning rate scheduler (onecycle uses PyTorch OneCycleLR)")
     
     # OneCycleLR specific arguments
     parser.add_argument("--onecycle_pct_start", type=float, default=0.3, help="OneCycleLR: percent of cycle for warmup (default: 0.3)")
@@ -285,50 +337,38 @@ def main():
     elif args.scheduler == "step":
         scheduler = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     elif args.scheduler == "onecycle":
-        # Use PyTorch's official OneCycleLR scheduler
-        # Reference: https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html
-        # Based on the paper "Super-Convergence: Very Fast Training of Neural Networks Using Large Learning Rates"
+        # Custom three-phase schedule:
+        # Phase 1: base_lr → max_lr over 40% of epochs
+        # Phase 2: max_lr → base_lr over 40% of epochs  
+        # Phase 3: base_lr → min_lr over 20% of epochs
         
-        # Calculate steps per epoch
-        try:
-            steps_per_epoch = len(train_loader)
-        except (TypeError, ValueError):
-            # For streaming dataloaders, estimate based on dataset size and batch size
-            if args.max_samples_per_class:
-                estimated_samples = (args.max_samples_per_class * train_dataset.num_classes) if train_dataset.num_classes else 1000
-                steps_per_epoch = (estimated_samples + args.batch_size - 1) // args.batch_size
-            else:
-                steps_per_epoch = 1000  # Default estimate
+        # Set up the three-phase schedule based on suggested LR
+        max_lr = current_lr           # Use the suggested/configured LR as max
+        base_lr = current_lr / 10.0  # Start at 1/10th of max
+        min_lr = base_lr / 10.0       # End at 1/10th of base
         
-        # Use the optimizer's current LR (may have been set by LR finder)
-        initial_lr = current_lr / args.onecycle_div_factor
-        min_lr = initial_lr / args.onecycle_final_div_factor
+        # Calculate epoch boundaries (40% / 40% / 20%)
+        phase1_epochs = int(args.epochs * 0.4)   # 40% for phase 1
+        phase2_epochs = int(args.epochs * 0.4)   # 40% for phase 2
+        phase3_epochs = args.epochs - phase1_epochs - phase2_epochs  # 20% for phase 3
         
-        print(f"\n[OneCycleLR] PyTorch Official Implementation:")
-        print(f"   - Max LR: {current_lr:.4f} (from LR finder or --lr)")
-        print(f"   - Epochs: {args.epochs}")
-        print(f"   - Steps per epoch: {steps_per_epoch}")
-        print(f"   - Total steps: {args.epochs * steps_per_epoch}")
-        print(f"   - Initial LR: {initial_lr:.6f} (max_lr / {args.onecycle_div_factor})")
-        print(f"   - Min LR: {min_lr:.8f} (initial_lr / {args.onecycle_final_div_factor})")
-        print(f"   - Anneal strategy: {args.onecycle_anneal_strategy}")
-        print(f"   - Percent start: {args.onecycle_pct_start*100:.0f}% (warmup phase)")
-        print(f"   - Three phase: {args.onecycle_three_phase}")
-        print(f"   - Cycle momentum: True (0.85 <-> 0.95)\n")
+        print(f"\n[OneCycleLR] Custom Three-Phase Schedule:")
+        print(f"   - Max LR: {max_lr:.4f} (from LR finder or --lr)")
+        print(f"   - Base LR: {base_lr:.4f}")
+        print(f"   - Min LR: {min_lr:.6f}")
+        print(f"   - Total epochs: {args.epochs}")
+        print(f"   - Phase 1: {phase1_epochs} epochs (40% - LR: {base_lr:.4f} → {max_lr:.4f})")
+        print(f"   - Phase 2: {phase2_epochs} epochs (40% - LR: {max_lr:.4f} → {base_lr:.4f})")
+        print(f"   - Phase 3: {phase3_epochs} epochs (20% - LR: {base_lr:.4f} → {min_lr:.6f})\n")
         
-        scheduler = OneCycleLR(
+        scheduler = CustomThreePhaseLR(
             optimizer,
-            max_lr=current_lr,  # Use current LR from optimizer
-            epochs=args.epochs,
-            steps_per_epoch=steps_per_epoch,
-            pct_start=args.onecycle_pct_start,
-            anneal_strategy=args.onecycle_anneal_strategy,
-            cycle_momentum=True,
-            base_momentum=0.85,
-            max_momentum=0.95,
-            div_factor=args.onecycle_div_factor,
-            final_div_factor=args.onecycle_final_div_factor,
-            three_phase=args.onecycle_three_phase
+            base_lr=base_lr,
+            max_lr=max_lr,
+            min_lr=min_lr,
+            phase1_epochs=phase1_epochs,
+            phase2_epochs=phase2_epochs,
+            phase3_epochs=phase3_epochs
         )
     else:
         raise ValueError(f"Unknown scheduler: {args.scheduler}")
@@ -372,15 +412,14 @@ def main():
             scaler=scaler if args.amp else None,
             use_amp=args.amp,
             max_grad_norm=args.max_grad_norm,
-            scheduler=scheduler if args.scheduler == "onecycle" else None,
-            scheduler_step_per_batch=(args.scheduler == "onecycle"),
+            scheduler=None,  # Custom scheduler steps per epoch, not per batch
+            scheduler_step_per_batch=False,
         )
         print("Starting evaluation...")
         te_loss, te_acc = evaluate(model, device, test_loader, criterion, use_amp=args.amp)
         
-        # Step scheduler per epoch (except OneCycleLR which steps per batch)
-        if args.scheduler != "onecycle":
-            scheduler.step()
+        # Step scheduler per epoch (custom scheduler steps per epoch)
+        scheduler.step()
 
         train_losses.append(tr_loss)
         train_acc.append(tr_acc)

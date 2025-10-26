@@ -10,6 +10,86 @@ import os
 from torch_lr_finder import LRFinder as TorchLRFinder
 
 
+def _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_idx, save_path=None):
+    """Print and save a detailed table of LR finder results."""
+    
+    # Calculate OneCycleLR parameters (assuming defaults)
+    div_factor = 25.0
+    final_div_factor = 10000.0
+    
+    initial_lr = suggested_lr / div_factor
+    min_lr = initial_lr / final_div_factor
+    
+    # Print summary
+    print("\n" + "="*70)
+    print("LEARNING RATE FINDER - DETAILED SUMMARY")
+    print("="*70)
+    
+    # Sample key iterations
+    print("\nSample LR Range Test Results:")
+    print(f"{'Iteration':<12} {'LR':<12} {'Loss':<12} {'Status':<25}")
+    print("-"*65)
+    
+    # Show a sample of iterations
+    sample_indices = [0, len(losses)//4, len(losses)//2, steepest_idx-1, steepest_idx, 
+                     min(min(steepest_idx+1, len(losses)-1), steepest_idx+2), min_loss_idx, len(losses)-1]
+    sample_indices = sorted(set([max(0, min(idx, len(losses)-1)) for idx in sample_indices]))
+    
+    for idx in sample_indices:
+        lr = lrs[idx]
+        loss = losses[idx]
+        if idx == steepest_idx:
+            status = "← STEEPEST DESCENT (SELECTED!)"
+        elif idx == min_loss_idx:
+            status = "← Minimum Loss"
+        elif loss < losses[0] * 0.9 and idx > steepest_idx:
+            status = "← Good zone (diverging soon)"
+        elif loss < losses[0] * 0.9:
+            status = "← Good zone"
+        elif loss > losses[0] * 1.2:
+            status = "← Diverging"
+        else:
+            status = "← Too small"
+        print(f"{idx:<12} {lr:<12.2e} {loss:<12.4f} {status}")
+    
+    print("\n" + "="*70)
+    print("SUGGESTED LEARNING RATE")
+    print("="*70)
+    print(f"Steepest Descent Point: {suggested_lr:.6f} ({suggested_lr:.2e})")
+    print(f"Minimum Loss Point:     {lrs[min_loss_idx]:.6f} ({lrs[min_loss_idx]:.2e})")
+    
+    print("\n" + "="*70)
+    print("ONECYCLELR SCHEDULER - LR RANGE CALCULATION")
+    print("="*70)
+    print(f"Suggested LR (max_lr):     {suggested_lr:.6f} (Used as OneCycleLR peak)")
+    print(f"Initial LR:                {initial_lr:.6f} (max_lr / {div_factor})")
+    print(f"Final LR (min_lr):         {min_lr:.8f} (initial_lr / {final_div_factor})")
+    print(f"\nOneCycleLR Schedule:")
+    print(f"  - Starts at:   {initial_lr:.6f}")
+    print(f"  - Reaches max: {suggested_lr:.6f} (at ~30% through training)")
+    print(f"  - Ends at:     {min_lr:.8f}")
+    print(f"\nThis range will be used during actual training.")
+    print("="*70 + "\n")
+    
+    # Save to file
+    if save_path:
+        summary_file = save_path.replace('.png', '_summary.txt')
+        with open(summary_file, 'w') as f:
+            f.write("="*70 + "\n")
+            f.write("LEARNING RATE FINDER - DETAILED SUMMARY\n")
+            f.write("="*70 + "\n\n")
+            f.write(f"Suggested LR: {suggested_lr:.6f}\n")
+            f.write(f"Minimum Loss LR: {lrs[min_loss_idx]:.6f}\n")
+            f.write(f"Initial LR (OneCycle): {initial_lr:.6f}\n")
+            f.write(f"Final LR (OneCycle): {min_lr:.8f}\n")
+            f.write(f"\nFull LR History:\n")
+            f.write(f"{'Iteration':<12} {'LR':<15} {'Loss':<15}\n")
+            f.write("-"*45 + "\n")
+            for i, (lr, loss) in enumerate(zip(lrs, losses)):
+                f.write(f"{i:<12} {lr:<15.6e} {loss:<15.4f}\n")
+        print(f"Full summary saved to: {summary_file}\n")
+
+
 def find_lr(
     model: nn.Module,
     train_loader: torch.utils.data.DataLoader,
@@ -98,6 +178,8 @@ def find_lr(
     lrs = lr_finder.history['lr']
     
     # Find steepest descent point (minimum gradient)
+    min_loss_idx = losses.index(min(losses))
+    
     if len(losses) > 1:
         # Calculate gradients (approximate)
         gradients = []
@@ -110,9 +192,13 @@ def find_lr(
         suggested_lr = lrs[steepest_idx]
     else:
         # Fallback to minimum loss if only one point
-        suggested_lr = lrs[losses.index(min(losses))]
+        steepest_idx = min_loss_idx
+        suggested_lr = lrs[min_loss_idx]
     
     print(f"Suggested learning rate: {suggested_lr:.2e}")
+    
+    # Print detailed summary table
+    _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_idx, save_path)
     
     # Create plot if requested
     fig = None
@@ -218,6 +304,7 @@ def find_lr_advanced(
         steepest_idx = np.argmin(gradients) + 1
         steepest_lr = lrs[steepest_idx]
     else:
+        steepest_idx = min_loss_idx
         steepest_lr = min_loss_lr
     
     # Use steepest descent as it's more commonly recommended
@@ -226,6 +313,9 @@ def find_lr_advanced(
     print(f"Minimum loss LR: {min_loss_lr:.2e}")
     print(f"Steepest descent LR: {steepest_lr:.2e}")
     print(f"Suggested learning rate: {suggested_lr:.2e}")
+    
+    # Print detailed summary table
+    _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_idx, save_path)
     
     # Create plot if requested
     fig = None

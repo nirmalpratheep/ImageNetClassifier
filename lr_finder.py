@@ -118,6 +118,9 @@ def find_lr(
     fig = None
     if plot:
         try:
+            # Turn off interactive mode to prevent blocking
+            plt.ioff()
+            
             # Use the built-in plot method from torch-lr-finder
             fig = lr_finder.plot(skip_start=10, skip_end=5)
             
@@ -131,7 +134,10 @@ def find_lr(
             if save_path:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
                 print(f"LR finder plot saved to: {save_path}")
-                
+            
+            # Close figure to prevent display blocking
+            plt.close(fig)
+            
         except Exception as e:
             print(f"Warning: Could not create plot: {e}")
             fig = None
@@ -225,6 +231,9 @@ def find_lr_advanced(
     fig = None
     if plot:
         try:
+            # Turn off interactive mode to prevent blocking
+            plt.ioff()
+            
             fig = lr_finder.plot(skip_start=10, skip_end=5)
             
             # Add suggested LR lines
@@ -239,6 +248,9 @@ def find_lr_advanced(
             if save_path:
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
                 print(f"LR finder plot saved to: {save_path}")
+            
+            # Close figure to prevent display blocking
+            plt.close(fig)
                 
         except Exception as e:
             print(f"Warning: Could not create plot: {e}")

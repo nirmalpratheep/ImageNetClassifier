@@ -8,7 +8,7 @@ import torch.optim as optim
 import os
 from datetime import datetime
 
-from preprocess import get_data_loaders
+from dataset_loader import create_data_loaders
 from train import train_epoch, evaluate
 from torch.amp import GradScaler
 from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR, StepLR
@@ -44,13 +44,7 @@ def get_device(prefer_cuda: bool = True) -> torch.device:
     return torch.device("cpu")
 
 
-def build_model(device: torch.device):
-    """Build ResNet-50 model for ImageNet-1K."""
-    from model_resnet50 import ResNet50
-    
-    num_classes = 1000  # ImageNet-1K has 1000 classes
-    model = ResNet50(num_classes=num_classes)
-    return model.to(device)
+
 
 
 def save_snapshot(model, optimizer, scheduler, epoch, train_losses, train_acc, test_losses, test_acc, 
@@ -176,18 +170,18 @@ def main():
     
     print(f"Data loading: num_workers={num_workers}, pin_memory={pin_memory}, use_cuda={use_cuda}")
     
-    print(f"Loading ImageNet-1K dataset from {args.data_dir}...")
-    if args.max_samples:
-        print(f"Limited to {args.max_samples} samples per split")
+    print(f"Loading ImageNet dataset from {args.data_dir}...")
     
-    train_loader, test_loader = get_data_loaders(
+    train_loader, val_loader, train_dataset, val_dataset = create_data_loaders(
+        data_dir=args.data_dir,
         batch_size=args.batch_size,
+        image_size=224,
         num_workers=num_workers,
-        pin_memory=pin_memory,
-        shuffle_train=True,
-        streaming=False,  # Always use offline data
-        max_samples=args.max_samples,
+        subset_size=None,  # Use all classes
+        augmentation=True
     )
+    # Use val_loader as test_loader for compatibility
+    test_loader = val_loader
     
     # Test data loading
     print("Testing data loading...")
@@ -198,19 +192,23 @@ def main():
         print(f"Data loading failed: {e}")
         return 1
 
-    model = build_model(device)
-    print(f"Device: {device}")
-    print(f"Model: ResNet-50 for ImageNet-1K")
-    print(f"Model loaded, starting training...")
-    
-    # ImageNet-1K configuration
-    num_classes = 1000
-    dataset_name = "ImageNet-1K"
+    # Get number of classes from dataset
+    num_classes = train_dataset.num_classes
+    dataset_name = "ImageNet"
     input_size = 224
     
     print(f"Dataset: {dataset_name} ({num_classes} classes)")
+    print(f"Training samples: {len(train_dataset)}")
+    print(f"Validation samples: {len(val_dataset)}")
     
-    # Define class names for ImageNet-1K
+    # Build model with correct number of classes
+    from model_resnet50 import ResNet50
+    model = ResNet50(num_classes=num_classes).to(device)
+    print(f"Device: {device}")
+    print(f"Model: ResNet-50 for {num_classes} classes")
+    print(f"Model loaded, starting training...")
+    
+    # Define class names for dataset
     class_names = [f"class_{i}" for i in range(num_classes)]
     
     # Show model summary

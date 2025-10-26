@@ -214,6 +214,14 @@ def main():
     args = parser.parse_args()
     set_seed(42)
     device = get_device(prefer_cuda=not args.no_cuda)
+    
+    # Create output directories early to prevent failures
+    os.makedirs(args.snapshot_dir, exist_ok=True)
+    os.makedirs(args.plot_dir, exist_ok=True)
+    if args.lr_plot:
+        lr_plot_dir = os.path.dirname(os.path.abspath(args.lr_plot))
+        if lr_plot_dir:
+            os.makedirs(lr_plot_dir, exist_ok=True)
 
     # Optimize data loading based on device
     use_cuda = torch.cuda.is_available() and not args.no_cuda
@@ -343,23 +351,24 @@ def main():
         # Phase 3: base_lr → min_lr over 20% of epochs
         
         # Set up the three-phase schedule based on suggested LR
+        # Using ratio 1:10:100 (min_lr : base_lr : max_lr)
         max_lr = current_lr           # Use the suggested/configured LR as max
         base_lr = current_lr / 10.0  # Start at 1/10th of max
-        min_lr = base_lr / 10.0       # End at 1/10th of base
+        min_lr = current_lr / 100.0   # End at 1/100th of max
         
         # Calculate epoch boundaries (40% / 40% / 20%)
-        phase1_epochs = int(args.epochs * 0.4)   # 40% for phase 1
-        phase2_epochs = int(args.epochs * 0.4)   # 40% for phase 2
-        phase3_epochs = args.epochs - phase1_epochs - phase2_epochs  # 20% for phase 3
+        phase1_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
+        phase2_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
+        phase3_epochs = max(1, args.epochs - phase1_epochs - phase2_epochs)  # At least 1 epoch
         
         print(f"\n[OneCycleLR] Custom Three-Phase Schedule:")
-        print(f"   - Max LR: {max_lr:.4f} (from LR finder or --lr)")
-        print(f"   - Base LR: {base_lr:.4f}")
-        print(f"   - Min LR: {min_lr:.6f}")
+        print(f"   - Max LR: {max_lr:.6f} (from LR finder or --lr)")
+        print(f"   - Base LR: {base_lr:.6f}")
+        print(f"   - Min LR: {min_lr:.8f}")
         print(f"   - Total epochs: {args.epochs}")
-        print(f"   - Phase 1: {phase1_epochs} epochs (40% - LR: {base_lr:.4f} → {max_lr:.4f})")
-        print(f"   - Phase 2: {phase2_epochs} epochs (40% - LR: {max_lr:.4f} → {base_lr:.4f})")
-        print(f"   - Phase 3: {phase3_epochs} epochs (20% - LR: {base_lr:.4f} → {min_lr:.6f})\n")
+        print(f"   - Phase 1: {phase1_epochs} epochs (40% - LR: {base_lr:.6f} → {max_lr:.6f})")
+        print(f"   - Phase 2: {phase2_epochs} epochs (40% - LR: {max_lr:.6f} → {base_lr:.6f})")
+        print(f"   - Phase 3: {phase3_epochs} epochs (20% - LR: {base_lr:.6f} → {min_lr:.8f})\n")
         
         scheduler = CustomThreePhaseLR(
             optimizer,
@@ -370,6 +379,9 @@ def main():
             phase2_epochs=phase2_epochs,
             phase3_epochs=phase3_epochs
         )
+        
+        # Initialize the scheduler to set the starting LR
+        scheduler.step()  # Set initial LR before training starts
     else:
         raise ValueError(f"Unknown scheduler: {args.scheduler}")
     
@@ -398,7 +410,11 @@ def main():
     for epoch in range(start_epoch, args.epochs + 1):
         print(f"\nEpoch {epoch}/{args.epochs}")
         
-        # No warmup - use scheduler directly
+        # Step scheduler BEFORE training to set the correct LR for this epoch
+        # (except for the first epoch where scheduler.step() was already called during initialization)
+        if epoch > start_epoch or args.scheduler != "onecycle":
+            scheduler.step()
+        
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Learning Rate: {current_lr:.6f}")
         
@@ -417,9 +433,6 @@ def main():
         )
         print("Starting evaluation...")
         te_loss, te_acc = evaluate(model, device, test_loader, criterion, use_amp=args.amp)
-        
-        # Step scheduler per epoch (custom scheduler steps per epoch)
-        scheduler.step()
 
         train_losses.append(tr_loss)
         train_acc.append(tr_acc)

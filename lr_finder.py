@@ -73,6 +73,11 @@ def _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_id
     
     # Save to file
     if save_path:
+        # Create output directory if it doesn't exist
+        output_dir = os.path.dirname(os.path.abspath(save_path))
+        if output_dir:  # Only create if save_path has a directory
+            os.makedirs(output_dir, exist_ok=True)
+        
         summary_file = save_path.replace('.png', '_summary.txt')
         with open(summary_file, 'w') as f:
             f.write("="*70 + "\n")

@@ -411,12 +411,14 @@ def main():
     parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
     parser.add_argument("--dataset", type=str, default="imagenet", choices=["imagenet", "tinyimagenet"], 
                        help="Dataset type: imagenet or tinyimagenet")
-    parser.add_argument("--batch_size", type=int, default=1028, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size (default: 128 for T4 compatibility)")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers")
     parser.add_argument("--max_epochs", type=int, default=10, help="Max epochs")
     parser.add_argument("--lr_finder", action="store_true", help="Run LR finder")
     parser.add_argument("--plot_lr", action="store_true", help="Plot LR finder results")
     parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clip value")
+    parser.add_argument("--accumulate_grad_batches", type=int, default=1, 
+                       help="Number of gradient accumulation steps (use 4-8 for T4 to simulate larger batches)")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Checkpoint directory")
     parser.add_argument("--resume", action="store_true", 
                    help="Resume from latest checkpoint in results/checkpoints/")
@@ -483,6 +485,7 @@ def main():
     print(f"Data directory: {args.data_dir}")
     print(f"Dataset type: {args.dataset}")
     print(f"Batch size: {args.batch_size}")
+    print(f"Gradient accumulation steps: {args.accumulate_grad_batches}")
     print(f"Max epochs: {args.max_epochs}")
     print(f"LR finder: {args.lr_finder}")
     print(f"Loss function: {args.loss_type}")
@@ -514,18 +517,31 @@ def main():
     print("="*70)
     
     available_gpus = torch.cuda.device_count()
+    
+    # Detect GPU type and set appropriate precision
+    # T4 GPUs don't support bfloat16, use fp16 instead
+    gpu_precision = "16-mixed"  # Default to fp16 for T4 compatibility
+    if available_gpus > 0 and torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0).lower()
+        if "a100" in gpu_name or "a10" in gpu_name or "h100" in gpu_name:
+            gpu_precision = "bf16-mixed"  # Use bfloat16 for newer GPUs
+            print(f"✓ Detected {torch.cuda.get_device_name(0)} - using bf16-mixed precision")
+        else:
+            gpu_precision = "16-mixed"  # Use fp16 for T4 and other GPUs
+            print(f"✓ Detected {torch.cuda.get_device_name(0)} - using fp16-mixed precision (T4 compatible)")
+    
     if available_gpus > 1:
         training_accelerator = "gpu"
         training_devices = available_gpus
         training_strategy = "ddp"
-        precision = "bf16-mixed"
+        precision = gpu_precision
         effective_batch_size = args.batch_size * available_gpus
         print(f"🚀 Auto-detected {available_gpus} GPUs - using multi-GPU training")
     elif available_gpus == 1:
         training_accelerator = "gpu"
         training_devices = 1
         training_strategy = "auto"
-        precision = "bf16-mixed"
+        precision = gpu_precision
         effective_batch_size = args.batch_size
         print(f"Auto-detected 1 GPU - using single GPU training")
     else:
@@ -535,7 +551,25 @@ def main():
         precision = "32"
         effective_batch_size = args.batch_size
         print("No GPUs detected - using CPU training")
-    print(f"Effective batch size: {effective_batch_size}")
+    
+    # Calculate total effective batch size with gradient accumulation
+    total_effective_batch_size = effective_batch_size * args.accumulate_grad_batches
+    print(f"Batch size per GPU: {args.batch_size}")
+    print(f"Gradient accumulation steps: {args.accumulate_grad_batches}")
+    print(f"Effective batch size: {total_effective_batch_size}")
+    
+    # T4-specific recommendations
+    if available_gpus > 0 and torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0).lower()
+        if "t4" in gpu_name:
+            print(f"\n💡 T4 GPU Recommendations:")
+            print(f"   ✓ Using fp16 mixed precision (T4 compatible)")
+            print(f"   ✓ Batch size: {args.batch_size} (recommended: 64-128 for ResNet50)")
+            print(f"   ✓ Gradient accumulation: {args.accumulate_grad_batches} (use 4-8 for larger effective batch)")
+            if args.batch_size > 128:
+                print(f"   ⚠ Warning: Batch size {args.batch_size} may cause OOM on T4 (16GB VRAM)")
+            if args.accumulate_grad_batches == 1:
+                print(f"   💡 Tip: Use --accumulate_grad_batches 4 to simulate batch_size={args.batch_size * 4}")
     # Load data based on dataset type
     if args.dataset == "tinyimagenet":
         print("Loading TinyImageNet data...")
@@ -722,7 +756,7 @@ def main():
         gradient_clip_val=args.gradient_clip_val,
         strategy=training_strategy,
         default_root_dir=logs_dir,
-        accumulate_grad_batches=1,
+        accumulate_grad_batches=args.accumulate_grad_batches,
         logger=[tensorboard_logger, csv_logger],
         callbacks=[
             checkpoint_callback, 

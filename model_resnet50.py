@@ -94,22 +94,16 @@ class ResNet50(nn.Module):
     def _init_residual_bn_gamma(self):
         """Initialize the last BN layer in each residual block to γ=0 for stable convergence."""
         # Initialize bn3 in each Bottleneck block (last BN layer in residual path)
+        # NOTE: Only initialize bn3 in residual path, NOT downsample path!
+        # Downsample is a projection path and needs non-zero weights.
         for layer in [self.layer1, self.layer2, self.layer3, self.layer4]:
             for block in layer:
                 if hasattr(block, 'bn3'):
                     # Set γ=0 for the last BN layer in each residual block
                     nn.init.constant_(block.bn3.weight, 0)
-                    print(f"Initialized BN γ=0 for {block.__class__.__name__}.bn3")
         
-        # Initialize downsample BN layers to γ=0
-        for layer in [self.layer1, self.layer2, self.layer3, self.layer4]:
-            for block in layer:
-                if hasattr(block, 'downsample') and block.downsample is not None:
-                    # Find the BN layer in the downsample path
-                    for module in block.downsample:
-                        if isinstance(module, nn.BatchNorm2d):
-                            nn.init.constant_(module.weight, 0)
-                            print(f"Initialized BN γ=0 for downsample in {block.__class__.__name__}")
+        # DO NOT initialize downsample BN layers to γ=0!
+        # The downsample path is a projection that needs to pass gradients through
     
     def forward(self, x):
         x = self.relu(self.bn1(self.conv1(x)))

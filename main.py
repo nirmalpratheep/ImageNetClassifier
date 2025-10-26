@@ -128,7 +128,7 @@ def main():
     parser.add_argument("--no_cuda", action="store_true", help="Disable CUDA")
     
     # Dataset arguments
-    parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to use (for testing/debugging)")
+    parser.add_argument("--max_samples_per_class", type=int, default=None, help="Maximum number of samples per class to load (default: all samples)")
     
     # LR Finder arguments
     parser.add_argument("--find_lr", action="store_true", help="Run learning rate finder")
@@ -171,6 +171,8 @@ def main():
     print(f"Data loading: num_workers={num_workers}, pin_memory={pin_memory}, use_cuda={use_cuda}")
     
     print(f"Loading ImageNet dataset from {args.data_dir}...")
+    if args.max_samples_per_class:
+        print(f"Limiting to {args.max_samples_per_class} samples per class")
     
     train_loader, val_loader, train_dataset, val_dataset = create_data_loaders(
         data_dir=args.data_dir,
@@ -178,7 +180,8 @@ def main():
         image_size=224,
         num_workers=num_workers,
         subset_size=None,  # Use all classes
-        augmentation=True
+        augmentation=True,
+        max_samples_per_class=args.max_samples_per_class
     )
     # Use val_loader as test_loader for compatibility
     test_loader = val_loader
@@ -288,8 +291,9 @@ def main():
             steps_per_epoch = len(train_loader)
         except (TypeError, ValueError):
             # For streaming dataloaders, estimate based on dataset size and batch size
-            if args.max_samples:
-                steps_per_epoch = (args.max_samples + args.batch_size - 1) // args.batch_size
+            if args.max_samples_per_class:
+                estimated_samples = (args.max_samples_per_class * train_dataset.num_classes) if train_dataset.num_classes else 1000
+                steps_per_epoch = (estimated_samples + args.batch_size - 1) // args.batch_size
             else:
                 steps_per_epoch = 1000  # Default estimate
         

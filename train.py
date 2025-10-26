@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.amp import autocast, GradScaler
+from tqdm import tqdm
 
 
 def train_epoch(
@@ -21,7 +22,10 @@ def train_epoch(
     correct = 0
     total = 0
 
-    for batch_idx, (data, target) in enumerate(train_loader):
+    # Create progress bar
+    pbar = tqdm(train_loader, desc='Training', leave=False, ncols=100)
+
+    for batch_idx, (data, target) in enumerate(pbar):
         data, target = data.to(device), target.to(device)
 
         optimizer.zero_grad(set_to_none=True)
@@ -39,6 +43,11 @@ def train_epoch(
         _, predicted = output.max(1)
         total += target.size(0)
         correct += predicted.eq(target).sum().item()
+
+        # Update progress bar with current metrics
+        current_loss = running_loss / (batch_idx + 1)
+        current_acc = 100. * correct / total
+        pbar.set_postfix({'Loss': f'{current_loss:.4f}', 'Acc': f'{current_acc:.2f}%'})
 
     # Handle streaming dataloaders that might not have a proper length
     try:
@@ -62,8 +71,11 @@ def evaluate(model, device, test_loader, criterion, use_amp: bool = False):
     correct = 0
     total = 0
 
+    # Create progress bar for evaluation
+    pbar = tqdm(test_loader, desc='Evaluating', leave=False, ncols=100)
+
     with torch.no_grad():
-        for data, target in test_loader:
+        for batch_idx, (data, target) in enumerate(pbar):
             data, target = data.to(device), target.to(device)
             output = model(data)
             loss_val = criterion(output, target).item()
@@ -71,7 +83,11 @@ def evaluate(model, device, test_loader, criterion, use_amp: bool = False):
             _, predicted = output.max(1)
             total += target.size(0)
             correct += predicted.eq(target).sum().item()
-        # Intentionally no per-batch logging; epoch summary is printed in main.py
+
+            # Update progress bar with current metrics
+            current_loss = test_loss / (batch_idx + 1)
+            current_acc = 100. * correct / total
+            pbar.set_postfix({'Loss': f'{current_loss:.4f}', 'Acc': f'{current_acc:.2f}%'})
 
     # Handle streaming dataloaders that might not have a proper length
     try:

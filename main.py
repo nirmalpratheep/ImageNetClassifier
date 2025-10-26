@@ -277,6 +277,9 @@ def main():
         print("="*70 + "\n")
     
     # Improved scheduler setup
+    # Get the current LR from optimizer (may have been updated by LR finder)
+    current_lr = optimizer.param_groups[0]['lr']
+    
     if args.scheduler == "cosine":
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
     elif args.scheduler == "step":
@@ -297,11 +300,12 @@ def main():
             else:
                 steps_per_epoch = 1000  # Default estimate
         
-        initial_lr = args.lr / args.onecycle_div_factor
+        # Use the optimizer's current LR (may have been set by LR finder)
+        initial_lr = current_lr / args.onecycle_div_factor
         min_lr = initial_lr / args.onecycle_final_div_factor
         
         print(f"\n[OneCycleLR] PyTorch Official Implementation:")
-        print(f"   - Max LR: {args.lr:.4f}")
+        print(f"   - Max LR: {current_lr:.4f} (from LR finder or --lr)")
         print(f"   - Epochs: {args.epochs}")
         print(f"   - Steps per epoch: {steps_per_epoch}")
         print(f"   - Total steps: {args.epochs * steps_per_epoch}")
@@ -314,7 +318,7 @@ def main():
         
         scheduler = OneCycleLR(
             optimizer,
-            max_lr=args.lr,
+            max_lr=current_lr,  # Use current LR from optimizer
             epochs=args.epochs,
             steps_per_epoch=steps_per_epoch,
             pct_start=args.onecycle_pct_start,

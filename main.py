@@ -13,7 +13,7 @@ from train import train_epoch, evaluate
 from torch.amp import GradScaler
 from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR, StepLR
 from torchsummary import summary
-from lr_finder import find_lr, find_lr_advanced, LRFinder
+from lr_finder import find_lr
 
 # Visualization imports
 from visualization import (
@@ -288,36 +288,22 @@ def main():
         print("="*70)
         
         try:
-            if args.lr_advanced:
-                suggested_lr, fig = find_lr_advanced(
-                    model=model,
-                    train_loader=train_loader,
-                    optimizer=optimizer,
-                    criterion=nn.CrossEntropyLoss(),
-                    device=device,
-                    start_lr=args.lr_start,
-                    end_lr=args.lr_end,
-                    num_iter=args.lr_iter,
-                    step_mode=args.lr_step_mode,
-                    smooth_f=args.lr_smooth_f,
-                    diverge_th=args.lr_diverge_th,
-                    plot=True,
-                    save_path=args.lr_plot
-                )
-            else:
-                suggested_lr, fig = find_lr(
-                    model=model,
-                    train_loader=train_loader,
-                    optimizer=optimizer,
-                    criterion=nn.CrossEntropyLoss(),
-                    device=device,
-                    start_lr=args.lr_start,
-                    end_lr=args.lr_end,
-                    num_iter=args.lr_iter,
-                    plot=True,
-                    save_path=args.lr_plot,
-                    use_amp=args.amp
-                )
+            suggested_lr, fig = find_lr(
+                model=model,
+                train_loader=train_loader,
+                optimizer=optimizer,
+                criterion=nn.CrossEntropyLoss(),
+                device=device,
+                start_lr=args.lr_start,
+                end_lr=args.lr_end,
+                num_iter=args.lr_iter,
+                step_mode=args.lr_step_mode,
+                smooth_f=args.lr_smooth_f,
+                diverge_th=args.lr_diverge_th,
+                plot=True,
+                save_path=args.lr_plot,
+                use_amp=args.amp
+            )
             
             print(f"\nSuggested learning rate: {suggested_lr:.2e}")
             print(f"LR finder plot saved to: {args.lr_plot}")

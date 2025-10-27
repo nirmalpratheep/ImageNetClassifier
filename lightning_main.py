@@ -114,16 +114,18 @@ class ImageNetLightningModule(pl.LightningModule):
         logits = self(x)
         
         # Handle Mixup/CutMix if applied
-        if hasattr(self, '_current_batch') and self._current_batch is not None:
-            # Mixed labels from augmentation
-            _, y_a, y_b, lam = self._current_batch
-            loss = lam * self.criterion(logits, y_a) + (1 - lam) * self.criterion(logits, y_b)
-            # For mixed samples, accuracy is not meaningful, so we skip it
-            acc = torch.tensor(0.0, device=x.device)
-        else:
-            # Normal training
-            loss = self.criterion(logits, y)
-            acc = (logits.argmax(dim=1) == y).float().mean()
+        # if hasattr(self, '_current_batch') and self._current_batch is not None:
+        #     # Mixed labels from augmentation
+        #     _, y_a, y_b, lam = self._current_batch
+        #     loss = lam * self.criterion(logits, y_a) + (1 - lam) * self.criterion(logits, y_b)
+        #     # For mixed samples, accuracy is not meaningful, so we skip it
+        #     acc = torch.tensor(0.0, device=x.device)
+        #     if self.trainer.current_epoch == 0 and batch_idx < 3:
+        #         print(f"   ⚠️  Mixup/CutMix detected - accuracy set to 0.0")
+        # else:
+        # Normal training
+        loss = self.criterion(logits, y)
+        acc = (logits.argmax(dim=1) == y).float().mean()
         
         # Log basic metrics
         self.log('train_loss', loss, prog_bar=True,sync_dist=True)
@@ -431,7 +433,7 @@ def main():
                    help="Label smoothing factor (only for BCE losses)")
     parser.add_argument("--init_bce_bias", action="store_true",
                    help="Initialize BCE bias to -log(n_classes) for optimal performance")
-    parser.add_argument("--warmup_epochs", type=int, default=0,
+    parser.add_argument("--warmup_epochs", type=int, default=2,
                    help="Number of warmup epochs (0 = no warmup)")
     parser.add_argument("--warmup_start_lr", type=float, default=1e-6,
                    help="Starting learning rate for warmup phase")

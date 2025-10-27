@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to prevent blocking
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Optional, Tuple
@@ -222,9 +224,6 @@ def find_lr(
     fig = None
     if plot:
         try:
-            # Turn off interactive mode to prevent blocking
-            plt.ioff()
-            
             # Use the built-in plot method from torch-lr-finder
             fig = lr_finder.plot(skip_start=10, skip_end=5)
             
@@ -339,9 +338,6 @@ def find_lr_advanced(
     fig = None
     if plot:
         try:
-            # Turn off interactive mode to prevent blocking
-            plt.ioff()
-            
             fig = lr_finder.plot(skip_start=10, skip_end=5)
             
             # Add suggested LR lines

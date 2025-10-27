@@ -67,8 +67,12 @@ def find_lr(
     )
     
     # Get suggested LR using steepest descent point (better than minimum loss)
-    losses = lr_finder.history['loss']
-    lrs = lr_finder.history['lr']
+    # Copy to plain lists and convert to Python floats to prevent reference/numpy type issues
+    losses = [float(x) for x in lr_finder.history['loss']]
+    lrs = [float(x) for x in lr_finder.history['lr']]
+    
+    print(f"[DEBUG] Got {len(lrs)} LR points from history")
+    print(f"[DEBUG] First LR value: {lrs[0]} (type: {type(lrs[0])})")
     
     # Find steepest descent point (minimum gradient = steepest negative slope)
     if len(losses) > 1:
@@ -78,12 +82,25 @@ def find_lr(
             gradients.append(grad)
         # Find the point with steepest negative gradient
         steepest_idx = np.argmin(gradients) + 1
-        suggested_lr = lrs[steepest_idx]
+        suggested_lr_raw = lrs[steepest_idx]
     else:
         # Fallback to minimum loss if only one point
-        suggested_lr = lrs[losses.index(min(losses))]
+        suggested_lr_raw = lrs[losses.index(min(losses))]
+    
+    # IMMEDIATELY convert to Python float to avoid any numpy type issues
+    suggested_lr = float(suggested_lr_raw)
     
     print(f"\nSuggested learning rate (steepest descent): {suggested_lr:.6f}")
+    print(f"[DEBUG] Raw suggested_lr value (before conversion): {suggested_lr_raw}")
+    print(f"[DEBUG] Type of suggested_lr_raw: {type(suggested_lr_raw)}")
+    print(f"[DEBUG] After conversion to Python float: {suggested_lr}")
+    print(f"[DEBUG] Type of suggested_lr (after conversion): {type(suggested_lr)}")
+    
+    # DEBUG: Check if lr_finder has its own suggestion
+    if hasattr(lr_finder, 'best_lr'):
+        builtin_suggested = lr_finder.best_lr
+        print(f"[DEBUG] torch-lr-finder built-in suggestion: {builtin_suggested:.6f}")
+        print(f"[DEBUG] Using our custom steepest descent suggestion: {suggested_lr:.6f}")
     
     # Create and save plot if requested
     fig = None
@@ -122,5 +139,11 @@ def find_lr(
     
     # DEBUG: Verify suggested_lr hasn't changed
     print(f"[DEBUG] suggested_lr after reset: {suggested_lr:.6f}")
+    print(f"[DEBUG] About to return suggested_lr: {suggested_lr}")
+    print(f"[DEBUG] Type before return: {type(suggested_lr)}")
     
-    return suggested_lr, fig
+    # Return a fresh copy to ensure no reference issues
+    return_lr = float(suggested_lr)
+    print(f"[DEBUG] return_lr (float copy): {return_lr}")
+    
+    return return_lr, fig

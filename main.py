@@ -305,6 +305,10 @@ def main():
                 use_amp=args.amp
             )
             
+            print(f"\n[MAIN.PY] Received suggested_lr: {suggested_lr}")
+            print(f"[MAIN.PY] suggested_lr type: {type(suggested_lr)}")
+            print(f"[MAIN.PY] suggested_lr as .2e: {suggested_lr:.2e}")
+            print(f"[MAIN.PY] suggested_lr as .6f: {suggested_lr:.6f}")
             print(f"\nSuggested learning rate: {suggested_lr:.2e}")
             print(f"LR finder plot saved to: {args.lr_plot}")
             

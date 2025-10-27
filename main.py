@@ -308,10 +308,16 @@ def main():
             print(f"\nSuggested learning rate: {suggested_lr:.2e}")
             print(f"LR finder plot saved to: {args.lr_plot}")
             
+            # DEBUG: Check optimizer LR before updating
+            optimizer_lr_before = optimizer.param_groups[0]['lr']
+            print(f"[DEBUG] Optimizer LR BEFORE update: {optimizer_lr_before:.8f}")
+            
             # Update optimizer with suggested LR
             for param_group in optimizer.param_groups:
                 param_group['lr'] = suggested_lr
             
+            optimizer_lr_after = optimizer.param_groups[0]['lr']
+            print(f"[DEBUG] Optimizer LR AFTER update: {optimizer_lr_after:.8f}")
             print(f"Updated optimizer learning rate to: {suggested_lr:.2e}")
             
         except Exception as e:
@@ -338,9 +344,16 @@ def main():
         
         # Set up the three-phase schedule based on suggested LR
         # Using ratio 1:10:100 (min_lr : base_lr : max_lr)
+        # The current_lr is ALREADY the suggested LR from the finder
         max_lr = current_lr           # Use the suggested/configured LR as max
         base_lr = current_lr / 10.0  # Start at 1/10th of max
         min_lr = current_lr / 100.0   # End at 1/100th of max
+        
+        print(f"\n[DEBUG] Creating scheduler with:")
+        print(f"   - current_lr (from optimizer): {current_lr:.6f}")
+        print(f"   - max_lr: {max_lr:.6f}")
+        print(f"   - base_lr: {base_lr:.6f}")
+        print(f"   - min_lr: {min_lr:.8f}")
         
         # Calculate epoch boundaries (40% / 40% / 20%)
         phase1_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
@@ -368,6 +381,11 @@ def main():
         
         # Initialize the scheduler to set the starting LR
         scheduler.step()  # Set initial LR before training starts
+        
+        # DEBUG: Print what LR was actually set
+        actual_lr = optimizer.param_groups[0]['lr']
+        print(f"[DEBUG] After scheduler initialization, actual LR: {actual_lr:.8f}")
+        print(f"[DEBUG] This should be base_lr ({base_lr:.6f}) which is correct for the first epoch")
     else:
         raise ValueError(f"Unknown scheduler: {args.scheduler}")
     

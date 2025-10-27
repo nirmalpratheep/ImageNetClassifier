@@ -111,4 +111,7 @@ def find_lr(
     # Reset model and optimizer to original state
     lr_finder.reset()
     
+    # DEBUG: Verify suggested_lr hasn't changed
+    print(f"[DEBUG] Returning suggested_lr: {suggested_lr:.6f}")
+    
     return suggested_lr, fig

@@ -55,8 +55,9 @@ def _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_id
     print("\n" + "="*70)
     print("SUGGESTED LEARNING RATE")
     print("="*70)
-    print(f"Steepest Descent Point: {suggested_lr:.6f} ({suggested_lr:.2e})")
-    print(f"Minimum Loss Point:     {lrs[min_loss_idx]:.6f} ({lrs[min_loss_idx]:.2e})")
+    print(f"✓ Suggested LR: {suggested_lr:.6f} ({suggested_lr:.2e})")
+    print(f"  - Based on steepest descent point (best for training)")
+    print(f"  - Minimum loss occurred at: {lrs[min_loss_idx]:.6f} ({lrs[min_loss_idx]:.2e})")
     
     print("\n" + "="*70)
     print("ONECYCLELR SCHEDULER - LR RANGE CALCULATION")
@@ -127,7 +128,13 @@ def find_lr(
     Returns:
         Tuple of (suggested_lr, figure)
     """
+    import io
+    import contextlib
+    
+    # Suppress torch-lr-finder's default output
     print("Running learning rate range test using torch-lr-finder...")
+    # Capture torch-lr-finder's print statements
+    f = io.StringIO()
     
     # Handle streaming dataloader by creating a regular dataloader
     if hasattr(train_loader, '__class__') and 'StreamingDataLoader' in str(train_loader.__class__):
@@ -170,13 +177,21 @@ def find_lr(
     # Create LR finder
     lr_finder = TorchLRFinder(model, optimizer, criterion, device=device)
     
-    # Run range test
-    lr_finder.range_test(
-        train_loader=lr_dataloader,
-        start_lr=start_lr,
-        end_lr=end_lr,
-        num_iter=num_iter
-    )
+    # Suppress torch-lr-finder's own output
+    import sys
+    old_stdout = sys.stdout
+    sys.stdout = f
+    
+    try:
+        # Run range test
+        lr_finder.range_test(
+            train_loader=lr_dataloader,
+            start_lr=start_lr,
+            end_lr=end_lr,
+            num_iter=num_iter
+        )
+    finally:
+        sys.stdout = old_stdout
     
     # Get suggested LR using steepest descent point (more commonly used)
     losses = lr_finder.history['loss']
@@ -200,9 +215,7 @@ def find_lr(
         steepest_idx = min_loss_idx
         suggested_lr = lrs[min_loss_idx]
     
-    print(f"Suggested learning rate: {suggested_lr:.2e}")
-    
-    # Print detailed summary table
+    # Print detailed summary table (includes the suggested LR)
     _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_idx, save_path)
     
     # Create plot if requested

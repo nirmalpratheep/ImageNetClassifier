@@ -57,21 +57,9 @@ def _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_id
     print("\n" + "="*70)
     print("SUGGESTED LEARNING RATE")
     print("="*70)
-    print(f"✓ Suggested LR: {suggested_lr:.6f} ({suggested_lr:.2e})")
-    print(f"  - Based on steepest descent point (best for training)")
-    print(f"  - Minimum loss occurred at: {lrs[min_loss_idx]:.6f} ({lrs[min_loss_idx]:.2e})")
-    
-    print("\n" + "="*70)
-    print("ONECYCLELR SCHEDULER - LR RANGE CALCULATION")
-    print("="*70)
-    print(f"Suggested LR (max_lr):     {suggested_lr:.6f} (Used as OneCycleLR peak)")
-    print(f"Initial LR:                {initial_lr:.6f} (max_lr / {div_factor})")
-    print(f"Final LR (min_lr):         {min_lr:.8f} (initial_lr / {final_div_factor})")
-    print(f"\nOneCycleLR Schedule:")
-    print(f"  - Starts at:   {initial_lr:.6f}")
-    print(f"  - Reaches max: {suggested_lr:.6f} (at ~30% through training)")
-    print(f"  - Ends at:     {min_lr:.8f}")
-    print(f"\nThis range will be used during actual training.")
+    print(f"✓ SUGGESTED LR: {suggested_lr:.6f}")
+    print(f"  Based on: Steepest descent point")
+    print(f"  Use this value for OneCycleLR max_lr parameter")
     print("="*70 + "\n")
     
     # Save to file
@@ -222,21 +210,24 @@ def find_lr(
     
     # Create plot if requested
     fig = None
-    if plot:
+    if plot and save_path:
         try:
-            # Use the built-in plot method from torch-lr-finder
-            fig = lr_finder.plot(skip_start=10, skip_end=5)
+            # Create a new figure with the plot
+            fig, ax = plt.subplots(figsize=(10, 6))
             
-            # Add suggested LR line
-            ax = fig.gca()
+            # Plot loss vs learning rate
+            ax.semilogx(lrs, losses)
             ax.axvline(x=suggested_lr, color='red', linestyle='--', alpha=0.7, 
                       label=f'Suggested LR: {suggested_lr:.2e}')
+            ax.set_xlabel('Learning Rate')
+            ax.set_ylabel('Loss')
+            ax.set_title('Learning Rate Finder')
             ax.legend()
+            ax.grid(True)
             
-            # Save if path provided
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"LR finder plot saved to: {save_path}")
+            # Save the plot
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"LR finder plot saved to: {save_path}")
             
             # Close figure to prevent display blocking
             plt.close(fig)
@@ -327,31 +318,31 @@ def find_lr_advanced(
     # Use steepest descent as it's more commonly recommended
     suggested_lr = steepest_lr
     
-    print(f"Minimum loss LR: {min_loss_lr:.2e}")
-    print(f"Steepest descent LR: {steepest_lr:.2e}")
-    print(f"Suggested learning rate: {suggested_lr:.2e}")
-    
-    # Print detailed summary table
+    # Print detailed summary table (includes the suggested LR - single clean output)
     _print_lr_summary_table(losses, lrs, suggested_lr, min_loss_idx, steepest_idx, save_path)
     
     # Create plot if requested
     fig = None
-    if plot:
+    if plot and save_path:
         try:
-            fig = lr_finder.plot(skip_start=10, skip_end=5)
+            # Create a new figure with the plot
+            fig, ax = plt.subplots(figsize=(10, 6))
             
-            # Add suggested LR lines
-            ax = fig.gca()
+            # Plot loss vs learning rate
+            ax.semilogx(lrs, losses)
             ax.axvline(x=min_loss_lr, color='blue', linestyle=':', alpha=0.7, 
                       label=f'Min Loss LR: {min_loss_lr:.2e}')
             ax.axvline(x=steepest_lr, color='red', linestyle='--', alpha=0.7, 
                       label=f'Steepest LR: {steepest_lr:.2e}')
+            ax.set_xlabel('Learning Rate')
+            ax.set_ylabel('Loss')
+            ax.set_title('Learning Rate Finder')
             ax.legend()
+            ax.grid(True)
             
-            # Save if path provided
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"LR finder plot saved to: {save_path}")
+            # Save the plot
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"LR finder plot saved to: {save_path}")
             
             # Close figure to prevent display blocking
             plt.close(fig)

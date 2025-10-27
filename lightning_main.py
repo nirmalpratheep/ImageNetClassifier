@@ -93,10 +93,11 @@ class ImageNetLightningModule(pl.LightningModule):
         self.warmup_start_lr = warmup_start_lr
         self.eta_min = eta_min
         self.model = ResNet50(num_classes=num_classes)
+        self.model = torch.compile(self.model, mode="reduce-overhead")
         
         # Create loss function based on type
         if loss_type == "cross_entropy":
-            self.criterion = nn.CrossEntropyLoss()
+            self.criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
         else:
             # Use BCE loss with proper scaling
             bce_loss_type = "bce" if loss_type == "bce" else "bce_with_logits"
@@ -664,6 +665,7 @@ def main():
             log_every_n_steps=50,
             val_check_interval=1.0,
             gradient_clip_val=args.gradient_clip_val,
+            gradient_accumulate_steps=1,
             strategy=lr_finder_strategy,
             enable_checkpointing=False,  # No checkpoints during LR finder
             enable_progress_bar=True,

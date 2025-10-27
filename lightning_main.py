@@ -29,10 +29,17 @@ class FilteredCSVLogger(CSVLogger):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # OLD: Only included base metric names
+        # NEW: Include both step and epoch-level metrics for proper CSV tracking
         # Define which metrics to keep in CSV
         self.allowed_metrics = {
-            'epoch', 'step', 'train_loss', 'val_loss', 'train_acc', 'val_acc', 'learning_rate',
-            'lr_scheduler_step', 'warmup_lr', 'cosine_lr', 'eta_min', 'warmup_epochs'
+            'epoch', 'step', 
+            'train_loss', 'train_loss_step', 'train_loss_epoch',  # Training loss metrics
+            'val_loss', 'val_loss_step', 'val_loss_epoch',  # Validation loss metrics
+            'train_acc', 'train_acc_step', 'train_acc_epoch',  # Training accuracy metrics
+            'val_acc', 'val_acc_step', 'val_acc_epoch',  # Validation accuracy metrics
+            'learning_rate',  # Learning rate
+            'lr_scheduler_step', 'warmup_lr', 'cosine_lr', 'eta_min', 'warmup_epochs'  # LR schedule metrics
         }
     
     def log_metrics(self, metrics, step):
@@ -118,16 +125,21 @@ class ImageNetLightningModule(pl.LightningModule):
             # Mixed labels from augmentation
             _, y_a, y_b, lam = self._current_batch
             loss = lam * self.criterion(logits, y_a) + (1 - lam) * self.criterion(logits, y_b)
-            # For mixed samples, accuracy is not meaningful, so we skip it
-            acc = torch.tensor(0.0, device=x.device)
+            # OLD: For mixed samples, accuracy is not meaningful, so we skip it
+            # OLD: acc = torch.tensor(0.0, device=x.device)
+            # NEW: Calculate accuracy using the original label (approximate accuracy for mixed samples)
+            acc = (logits.argmax(dim=1) == y).float().mean()
         else:
             # Normal training
             loss = self.criterion(logits, y)
             acc = (logits.argmax(dim=1) == y).float().mean()
         
         # Log basic metrics
-        self.log('train_loss', loss, prog_bar=True,sync_dist=True)
-        self.log('train_acc', acc, prog_bar=True,sync_dist=True)
+        # OLD: self.log('train_loss', loss, prog_bar=True,sync_dist=True)
+        # OLD: self.log('train_acc', acc, prog_bar=True,sync_dist=True)
+        # NEW: Log both on_step and on_epoch for proper tracking in metrics.csv
+        self.log('train_loss', loss, prog_bar=True, sync_dist=True, on_step=True, on_epoch=True)
+        self.log('train_acc', acc, prog_bar=True, sync_dist=True, on_step=True, on_epoch=True)
         
         # Log learning rate schedule metrics
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
@@ -174,8 +186,11 @@ class ImageNetLightningModule(pl.LightningModule):
         logits = self(x)
         loss = self.criterion(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log('val_loss', loss, prog_bar=True,sync_dist=True)
-        self.log('val_acc', acc, prog_bar=True,sync_dist=True)
+        # OLD: self.log('val_loss', loss, prog_bar=True,sync_dist=True)
+        # OLD: self.log('val_acc', acc, prog_bar=True,sync_dist=True)
+        # NEW: Log both on_step and on_epoch for consistency with training metrics
+        self.log('val_loss', loss, prog_bar=True, sync_dist=True, on_step=False, on_epoch=True)
+        self.log('val_acc', acc, prog_bar=True, sync_dist=True, on_step=False, on_epoch=True)
         return loss
     
     def _log_gradient_norms(self):
@@ -286,8 +301,12 @@ def get_imagenet_transforms(random_erasing_p=0.0):
         transforms.Resize(256),
         transforms.RandomCrop(224),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        transforms.RandAugment(num_ops=2, magnitude=9),
+        # OLD: ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)
+        # NEW: Reduced intensity for better convergence in later epochs
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
+        # OLD: RandAugment(num_ops=2, magnitude=9)
+        # NEW: Reduced magnitude from 9 to 6 for faster convergence
+        transforms.RandAugment(num_ops=2, magnitude=6),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ]
@@ -760,7 +779,9 @@ def main():
         logger=[tensorboard_logger, csv_logger],
         callbacks=[
             checkpoint_callback, 
-            EarlyStopping(monitor="val_loss", mode="min", patience=10,strict=False),
+            # OLD: patience=10
+            # NEW: patience=5 for more aggressive early stopping
+            EarlyStopping(monitor="val_loss", mode="min", patience=5, strict=False),
             lr_monitor
         ] + ([augmentation_callback] if augmentation_callback is not None else [])
     )

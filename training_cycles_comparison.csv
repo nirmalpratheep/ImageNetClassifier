@@ -1,0 +1,23 @@
+Hyperparameter,Cycle 1 (Epochs 0-12),Cycle 2 (Epochs 12-62),Cycle 3 (Epochs 62-110),Category
+data_dir,/mnt/data/imagenet-1k/,/mnt/data/imagenet-1k/,/mnt/data/imagenet-1k/,Data & Dataset
+dataset,imagenet,imagenet,imagenet,Data & Dataset
+results_dir,/mnt/data/results/,/mnt/data/results_new/,/mnt/data/results_new/,Data & Dataset
+loss_type,bce_with_logits,bce_with_logits,bce_with_logits,Model & Loss
+label_smoothing,0.1,0.1,0.1,Model & Loss
+init_bce_bias,True,True,True,Model & Loss
+learning_rate,0.1,0.1,0.1,Learning Rate & Schedule
+warmup_epochs,5,5,0,Learning Rate & Schedule
+warmup_start_lr,1e-6,0.01,0.01,Learning Rate & Schedule
+eta_min,1e-6,1e-6,1e-6,Learning Rate & Schedule
+max_epochs,90,90,110,Training Configuration
+batch_size,400,256,256,Training Configuration
+num_workers,16,16,16,Training Configuration
+gradient_clip_val,1.0,1.0,1.0,Training Configuration
+accumulate_grad_batches,1,1,1,Training Configuration
+early_stopping_patience,10,10,5,Training Configuration
+random_erasing_p,0.5,0.25,0.0,Data Augmentation
+mixup_alpha,0.2,0.2,0.15,Data Augmentation
+cutmix_alpha,1.0,1.0,0.4,Data Augmentation
+cutmix_prob,0.5,0.5,0.5,Data Augmentation
+resume,False,True,True,Resume Training
+

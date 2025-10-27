@@ -94,8 +94,14 @@ def find_lr(
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
             
+            # DEBUG: Check suggested_lr before plot
+            print(f"[DEBUG] suggested_lr before plot: {suggested_lr:.6f}")
+            
             # Use torch-lr-finder's built-in plot function
             fig = lr_finder.plot(skip_start=10, skip_end=5)
+            
+            # DEBUG: Check suggested_lr after plot (but before reset)
+            print(f"[DEBUG] suggested_lr after plot (before reset): {suggested_lr:.6f}")
             
             # Save the plot
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
@@ -108,10 +114,13 @@ def find_lr(
             print(f"Warning: Could not create plot: {e}")
             fig = None
     
+    # DEBUG: Check suggested_lr before reset
+    print(f"[DEBUG] suggested_lr before reset: {suggested_lr:.6f}")
+    
     # Reset model and optimizer to original state
     lr_finder.reset()
     
     # DEBUG: Verify suggested_lr hasn't changed
-    print(f"[DEBUG] Returning suggested_lr: {suggested_lr:.6f}")
+    print(f"[DEBUG] suggested_lr after reset: {suggested_lr:.6f}")
     
     return suggested_lr, fig

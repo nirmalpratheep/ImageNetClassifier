@@ -270,6 +270,17 @@ def main():
             max_grad_norm=args.max_grad_norm,
         )
         
+        # Compile model for PyTorch 2.x speedup (20-30% faster)
+        # Note: Cannot use torch.compile() with DDP/multiprocessing due to pickle issues
+        try:
+            if hasattr(torch, 'compile') and torch.cuda.is_available() and args.devices <= 1:
+                model = torch.compile(model, mode='reduce-overhead')
+                print("Model compiled with torch.compile (PyTorch 2.x speedup enabled)")
+            elif args.devices > 1:
+                print("torch.compile() disabled for multi-GPU training (not compatible with DDP)")
+        except Exception as e:
+            print(f"Could not compile model: {e}")
+        
         # Run LR finder if requested (before creating trainer)
         if args.find_lr:
             print("\n" + "="*70)

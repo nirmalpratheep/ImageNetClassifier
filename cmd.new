@@ -4,8 +4,7 @@ uv run python main_lightning.py \
     --batch_size 256\
     --epochs 100 \
     --lr 0.01 \
-    --num_workers 8 \
+    --num_workers 16 \
     --prefetch_factor 4 \
     --accumulate_grad_batches 2 \
     --devices 4
-    --max_samples_per_class 10

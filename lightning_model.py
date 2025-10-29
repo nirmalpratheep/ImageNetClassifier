@@ -134,15 +134,21 @@ class ImageNetLightningModule(LightningModule):
         self.train_accuracy(logits, y)
         
         # Compute batch-level accuracy for per-step logging
-        preds = logits.argmax(dim=-1)
+        # Use detach() to ensure we're computing on the actual predictions
+        preds = logits.detach().argmax(dim=-1)
         correct = (preds == y).float()
-        batch_acc = correct.mean() * 100.0  # Convert to percentage (0-100)
+        
+        # Calculate accuracy - ensure we have actual tensor values
+        # For distributed training, compute accuracy before any sync
+        num_correct = correct.sum().item()
+        total_samples = len(y)
+        batch_acc = (num_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
         
         # Log metrics to TensorBoard
         # Train loss: logged both per-step and per-epoch
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         # Train accuracy: batch-level for per-step (shown in progress bar)
-        # Note: Don't sync across GPUs for per-step (each GPU reports its own batch accuracy)
+        # Log as a float value, not tensor
         self.log('train_acc_step', batch_acc, on_step=True, on_epoch=False, prog_bar=True, logger=True, sync_dist=False)
         # Train accuracy: epoch-level uses the accumulated metric (sync across GPUs)
         self.log('train_acc', self.train_accuracy, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
@@ -165,29 +171,85 @@ class ImageNetLightningModule(LightningModule):
         
         return loss
     
+    def on_train_epoch_start(self):
+        """Called at the start of each training epoch."""
+        # Only print on main process (rank 0) to avoid duplication with DDP
+        if self.trainer.global_rank == 0:
+            current_lr = self.optimizers().param_groups[0]['lr']
+            current_epoch = self.current_epoch
+            total_epochs = self.trainer.max_epochs
+            print(f"\n{'='*70}")
+            print(f"Epoch {current_epoch + 1}/{total_epochs} - Learning Rate: {current_lr:.6f}")
+            print(f"{'='*70}")
+    
     def on_train_epoch_end(self):
-        """Collect epoch-level metrics."""
+        """Collect epoch-level metrics and print epoch summary."""
         # Get metrics from logger or compute from logged values
         epoch_loss = self.trainer.callback_metrics.get('train_loss_epoch', torch.tensor(0.0))
-        epoch_acc = self.trainer.callback_metrics.get('train_acc_epoch', torch.tensor(0.0))
+        # train_acc is logged as the metric object, Lightning adds _epoch suffix
+        epoch_acc_tensor = self.trainer.callback_metrics.get('train_acc', None)
+        if epoch_acc_tensor is None:
+            # Fallback: compute from the metric object directly
+            epoch_acc = self.train_accuracy.compute()
+        else:
+            epoch_acc = epoch_acc_tensor if isinstance(epoch_acc_tensor, torch.Tensor) else torch.tensor(epoch_acc_tensor)
+        
         current_lr = self.optimizers().param_groups[0]['lr']
         
-        self.train_losses.append(epoch_loss.item())
-        self.train_accs.append(epoch_acc.item() * 100.0)
+        # Convert to CPU float for storage
+        epoch_loss_val = epoch_loss.item() if isinstance(epoch_loss, torch.Tensor) else float(epoch_loss)
+        epoch_acc_val = epoch_acc.item() * 100.0 if isinstance(epoch_acc, torch.Tensor) else float(epoch_acc) * 100.0
+        
+        self.train_losses.append(epoch_loss_val)
+        self.train_accs.append(epoch_acc_val)
         self.learning_rates.append(current_lr)
+        
+        # Print epoch summary - only on main process (rank 0) to avoid duplication
+        if self.trainer.global_rank == 0:
+            current_epoch = self.current_epoch
+            print(f"\n{'='*70}")
+            print(f"Epoch {current_epoch + 1} Training Summary:")
+            print(f"  Train Loss: {epoch_loss_val:.4f}")
+            print(f"  Train Accuracy: {epoch_acc_val:.2f}%")
+            print(f"  Learning Rate: {current_lr:.6f}")
+            print(f"{'='*70}")
+        
+        # Reset metrics for next epoch
+        self.train_accuracy.reset()
     
     def on_validation_epoch_end(self):
-        """Collect validation metrics."""
+        """Collect validation metrics and print validation summary."""
         epoch_loss = self.trainer.callback_metrics.get('val_loss_epoch', torch.tensor(0.0))
-        epoch_acc = self.trainer.callback_metrics.get('val_acc_epoch', torch.tensor(0.0))
+        epoch_acc_tensor = self.trainer.callback_metrics.get('val_acc', None)
+        if epoch_acc_tensor is None:
+            epoch_acc = self.val_accuracy.compute()
+        else:
+            epoch_acc = epoch_acc_tensor if isinstance(epoch_acc_tensor, torch.Tensor) else torch.tensor(epoch_acc_tensor)
         
-        self.val_losses.append(epoch_loss.item())
-        val_acc_percent = epoch_acc.item() * 100.0
+        epoch_loss_val = epoch_loss.item() if isinstance(epoch_loss, torch.Tensor) else float(epoch_loss)
+        val_acc_percent = epoch_acc.item() * 100.0 if isinstance(epoch_acc, torch.Tensor) else float(epoch_acc) * 100.0
+        
+        self.val_losses.append(epoch_loss_val)
         self.val_accs.append(val_acc_percent)
         
         # Track best validation accuracy
         if val_acc_percent > self.best_val_acc:
             self.best_val_acc = val_acc_percent
+        
+        # Print validation summary - only on main process (rank 0) to avoid duplication
+        if self.trainer.global_rank == 0:
+            current_epoch = self.current_epoch
+            print(f"\n{'='*70}")
+            print(f"Epoch {current_epoch + 1} Validation Summary:")
+            print(f"  Val Loss: {epoch_loss_val:.4f}")
+            print(f"  Val Accuracy: {val_acc_percent:.2f}%")
+            if val_acc_percent == self.best_val_acc:
+                print(f"  ★ New best validation accuracy!")
+            print(f"  Best Val Accuracy: {self.best_val_acc:.2f}%")
+            print(f"{'='*70}")
+        
+        # Reset metrics for next epoch
+        self.val_accuracy.reset()
     
     def configure_optimizers(self):
         """Configure optimizer and learning rate scheduler."""

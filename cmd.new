@@ -8,4 +8,4 @@ uv run python main_lightning.py \
     --prefetch_factor 4 \
     --accumulate_grad_batches 2 \
     --devices 4
-
+    --max_samples_per_class 10

@@ -52,12 +52,14 @@ class ImageNetDataModule(LightningDataModule):
                 augmentation=self.augmentation
             )
             
+            print(f"DEBUG DataModule: max_samples_per_class = {self.max_samples_per_class}")
             self.train_dataset = ImageNetDataset(
                 data_dir=train_dir,
                 transform=train_transform,
                 subset_size=self.subset_size,
                 max_samples_per_class=self.max_samples_per_class
             )
+            print(f"DEBUG DataModule: After creating train_dataset, max_samples_per_class = {self.max_samples_per_class}")
             
             self.val_dataset = ImageNetDataset(
                 data_dir=val_dir,

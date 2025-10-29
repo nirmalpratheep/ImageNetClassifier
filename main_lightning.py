@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 import torch
 from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, RichProgressBar, RichModelSummary
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.strategies import DDPStrategy
 from lightning_model import ImageNetLightningModule
@@ -384,13 +384,27 @@ def main():
         else:
             accelerator = args.accelerator
         
+        # Configure Rich progress bar with text wrapping and visible output
+        try:
+            # RichProgressBar with proper configuration
+            progress_bar = RichProgressBar(
+                leave=True,  # Keep progress bar visible after completion
+                refresh_rate=10,  # Update every 10 steps
+                console_kwargs={"width": None, "force_terminal": True, "force_width": None},  # Auto-detect width, enable wrapping
+            )
+            callbacks = [checkpoint_callback, lr_monitor, progress_bar]
+        except Exception:
+            # Fallback if RichProgressBar is not available
+            progress_bar = None
+            callbacks = [checkpoint_callback, lr_monitor]
+        
         trainer_kwargs = {
             'max_epochs': args.epochs,
             'accelerator': accelerator,
             'devices': devices_param,
             'precision': precision,
             'logger': logger,
-            'callbacks': [checkpoint_callback, lr_monitor],
+            'callbacks': callbacks,
             'gradient_clip_val': args.gradient_clip_val,
             'gradient_clip_algorithm': "norm",
             'accumulate_grad_batches': args.accumulate_grad_batches,

@@ -21,7 +21,7 @@ DataLoader Optimization:
   DistributedSampler: Enabled automatically by Lightning for DDP
     - Each GPU sees unique, non-overlapping batches
 Dataset: ImageNet (1000 classes)
-TensorBoard logs will be saved to: ./logs/imagenet_resnet50/version_20251044
+TensorBoard logs will be saved to: ./logs/imagenet_resnet50/version_20251047
 View with: tensorboard --logdir ./logs
 Mixed Precision Training (FP16/BF16) enabled via torch.cuda.amp
   - Reduces memory usage → allows larger batch sizes → faster training

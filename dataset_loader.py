@@ -45,6 +45,7 @@ class ImageNetDataset(Dataset):
     def __init__(self, data_dir, transform=None, subset_size=None, max_samples_per_class=None):
         self.data_dir = data_dir
         self.transform = transform
+        self.max_samples_per_class = max_samples_per_class  # Store for later use
         
         # Get all image paths and labels
         self.samples = self._load_samples(subset_size, max_samples_per_class)
@@ -57,11 +58,17 @@ class ImageNetDataset(Dataset):
             self.num_classes = 0
         
         print(f"Loaded {len(self.samples)} samples from {data_dir}")
+        if max_samples_per_class is not None:
+            print(f"  (Limited to {max_samples_per_class} samples per class)")
         print(f"Number of classes: {self.num_classes}")
     
     def _load_samples(self, subset_size=None, max_samples_per_class=None):
         """Load all image paths and their corresponding labels."""
         samples = []
+        
+        # Debug print
+        if max_samples_per_class is not None:
+            print(f"DEBUG: max_samples_per_class = {max_samples_per_class}")
         
         # Get all class folders (could be numeric 0-999 or ImageNet IDs like n01440764)
         class_folders = [f for f in os.listdir(self.data_dir) 
@@ -85,6 +92,7 @@ class ImageNetDataset(Dataset):
         for idx, class_folder in enumerate(class_folders):
             class_to_idx[class_folder] = idx
         
+        total_before_limit = 0
         for class_folder in class_folders:
             class_path = os.path.join(self.data_dir, class_folder)
             class_idx = class_to_idx[class_folder]
@@ -93,13 +101,19 @@ class ImageNetDataset(Dataset):
             image_files = [f for f in os.listdir(class_path) 
                          if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
             
+            total_before_limit += len(image_files)
+            
             # Limit samples per class if specified
-            if max_samples_per_class and len(image_files) > max_samples_per_class:
+            if max_samples_per_class is not None and len(image_files) > max_samples_per_class:
                 image_files = image_files[:max_samples_per_class]
             
             for image_file in image_files:
                 image_path = os.path.join(class_path, image_file)
                 samples.append((image_path, class_idx))
+        
+        if max_samples_per_class is not None and len(samples) == total_before_limit:
+            print(f"WARNING: max_samples_per_class={max_samples_per_class} was not applied!")
+            print(f"  Total samples: {len(samples)}, Expected max: {len(class_folders) * max_samples_per_class}")
         
         return samples
     

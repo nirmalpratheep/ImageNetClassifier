@@ -48,7 +48,7 @@ def get_device(prefer_cuda: bool = True) -> torch.device:
 
 
 def save_snapshot(model, optimizer, scheduler, epoch, train_losses, train_acc, test_losses, test_acc, 
-                 snapshot_dir: str, model_name: str):
+                 snapshot_dir: str, model_name: str, scheduler_config: dict = None):
     """Save model snapshot with training state."""
     os.makedirs(snapshot_dir, exist_ok=True)
     
@@ -64,10 +64,32 @@ def save_snapshot(model, optimizer, scheduler, epoch, train_losses, train_acc, t
         'timestamp': datetime.now().isoformat()
     }
     
+    # Save scheduler configuration for proper resume
+    if scheduler_config:
+        snapshot['scheduler_config'] = scheduler_config
+    
     snapshot_path = os.path.join(snapshot_dir, f"{model_name}_epoch_{epoch}.pth")
     torch.save(snapshot, snapshot_path)
     print(f"Snapshot saved: {snapshot_path}")
     return snapshot_path
+
+
+def load_snapshot_metadata(snapshot_path: str, device):
+    """Load snapshot metadata (without requiring model/optimizer/scheduler to exist yet)."""
+    if not os.path.exists(snapshot_path):
+        raise FileNotFoundError(f"Snapshot not found: {snapshot_path}")
+    
+    print(f"Loading snapshot metadata: {snapshot_path}")
+    snapshot = torch.load(snapshot_path, map_location=device)
+    
+    epoch = snapshot['epoch']
+    train_losses = snapshot.get('train_losses', [])
+    train_acc = snapshot.get('train_acc', [])
+    test_losses = snapshot.get('test_losses', [])
+    test_acc = snapshot.get('test_acc', [])
+    scheduler_config = snapshot.get('scheduler_config', None)
+    
+    return epoch, train_losses, train_acc, test_losses, test_acc, scheduler_config, snapshot
 
 
 def load_snapshot(snapshot_path: str, model, optimizer, scheduler, device):
@@ -80,7 +102,13 @@ def load_snapshot(snapshot_path: str, model, optimizer, scheduler, device):
     
     model.load_state_dict(snapshot['model_state_dict'])
     optimizer.load_state_dict(snapshot['optimizer_state_dict'])
-    scheduler.load_state_dict(snapshot['scheduler_state_dict'])
+    
+    # Load scheduler state if it exists
+    if 'scheduler_state_dict' in snapshot:
+        scheduler.load_state_dict(snapshot['scheduler_state_dict'])
+        # After loading, last_epoch is the epoch we completed
+        # We'll step forward in the training loop to get LR for next epoch
+        # No need to step here - the training loop will handle it
     
     epoch = snapshot['epoch']
     train_losses = snapshot.get('train_losses', [])
@@ -88,8 +116,30 @@ def load_snapshot(snapshot_path: str, model, optimizer, scheduler, device):
     test_losses = snapshot.get('test_losses', [])
     test_acc = snapshot.get('test_acc', [])
     
-    print(f"Resumed from epoch {epoch}")
+    print(f"Loaded snapshot from epoch {epoch}")
     return epoch, train_losses, train_acc, test_losses, test_acc
+
+
+def get_scheduler_config(scheduler, scheduler_type: str, args):
+    """Extract scheduler configuration for saving in snapshot."""
+    config = {'type': scheduler_type}
+    
+    if scheduler_type == "cosine":
+        config['T_max'] = scheduler.T_max
+        config['eta_min'] = scheduler.eta_min
+    elif scheduler_type == "step":
+        config['step_size'] = scheduler.step_size
+        config['gamma'] = scheduler.gamma
+    elif scheduler_type == "onecycle":
+        # CustomThreePhaseLR
+        config['base_lr'] = scheduler.base_lr
+        config['max_lr'] = scheduler.max_lr
+        config['min_lr'] = scheduler.min_lr
+        config['phase1_epochs'] = scheduler.phase1_epochs
+        config['phase2_epochs'] = scheduler.phase2_epochs
+        config['phase3_epochs'] = scheduler.phase3_epochs
+    
+    return config
 
 
 def get_lr_warmup_factor(epoch: int, warmup_epochs: int) -> float:
@@ -331,66 +381,95 @@ def main():
         print("LR FINDER COMPLETED")
         print("="*70 + "\n")
     
+    # Check for resume BEFORE creating scheduler to restore scheduler config
+    resume_epoch = 0
+    scheduler_config = None
+    if args.resume_from:
+        resume_epoch, _, _, _, _, scheduler_config, _ = load_snapshot_metadata(args.resume_from, device)
+        print(f"Will resume from epoch {resume_epoch}, scheduler config will be restored from snapshot")
+
     # Improved scheduler setup
     # Get the current LR from optimizer (may have been updated by LR finder)
     current_lr = optimizer.param_groups[0]['lr']
     
-    if args.scheduler == "cosine":
-        scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
-    elif args.scheduler == "step":
-        scheduler = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
-    elif args.scheduler == "onecycle":
-        # Custom three-phase schedule:
-        # Phase 1: base_lr → max_lr over 40% of epochs
-        # Phase 2: max_lr → base_lr over 40% of epochs  
-        # Phase 3: base_lr → min_lr over 20% of epochs
-        
-        # Set up the three-phase schedule based on suggested LR
-        # Using ratio 1:10:100 (min_lr : base_lr : max_lr)
-        # The current_lr is ALREADY the suggested LR from the finder
-        max_lr = current_lr           # Use the suggested/configured LR as max
-        base_lr = current_lr / 10.0  # Start at 1/10th of max
-        min_lr = current_lr / 100.0   # End at 1/100th of max
-        
-        print(f"\n[DEBUG] Creating scheduler with:")
-        print(f"   - current_lr (from optimizer): {current_lr:.6f}")
-        print(f"   - max_lr: {max_lr:.6f}")
-        print(f"   - base_lr: {base_lr:.6f}")
-        print(f"   - min_lr: {min_lr:.8f}")
-        
-        # Calculate epoch boundaries (40% / 40% / 20%)
-        phase1_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
-        phase2_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
-        phase3_epochs = max(1, args.epochs - phase1_epochs - phase2_epochs)  # At least 1 epoch
-        
-        print(f"\n[OneCycleLR] Custom Three-Phase Schedule:")
-        print(f"   - Max LR: {max_lr:.6f} (from LR finder or --lr)")
-        print(f"   - Base LR: {base_lr:.6f}")
-        print(f"   - Min LR: {min_lr:.8f}")
-        print(f"   - Total epochs: {args.epochs}")
-        print(f"   - Phase 1: {phase1_epochs} epochs (40% - LR: {base_lr:.6f} → {max_lr:.6f})")
-        print(f"   - Phase 2: {phase2_epochs} epochs (40% - LR: {max_lr:.6f} → {base_lr:.6f})")
-        print(f"   - Phase 3: {phase3_epochs} epochs (20% - LR: {base_lr:.6f} → {min_lr:.8f})\n")
-        
-        scheduler = CustomThreePhaseLR(
-            optimizer,
-            base_lr=base_lr,
-            max_lr=max_lr,
-            min_lr=min_lr,
-            phase1_epochs=phase1_epochs,
-            phase2_epochs=phase2_epochs,
-            phase3_epochs=phase3_epochs
-        )
-        
-        # Initialize the scheduler to set the starting LR
-        scheduler.step()  # Set initial LR before training starts
-        
-        # DEBUG: Print what LR was actually set
-        actual_lr = optimizer.param_groups[0]['lr']
-        print(f"[DEBUG] After scheduler initialization, actual LR: {actual_lr:.8f}")
-        print(f"[DEBUG] This should be base_lr ({base_lr:.6f}) which is correct for the first epoch")
+    # Use saved scheduler config if resuming, otherwise use command-line args
+    if scheduler_config and scheduler_config.get('type') == args.scheduler:
+        print("\n[Resume] Restoring scheduler from snapshot configuration...")
+        if args.scheduler == "cosine":
+            scheduler = CosineAnnealingLR(optimizer, T_max=scheduler_config['T_max'], eta_min=scheduler_config.get('eta_min', 1e-6))
+        elif args.scheduler == "step":
+            scheduler = StepLR(optimizer, step_size=scheduler_config['step_size'], gamma=scheduler_config['gamma'])
+        elif args.scheduler == "onecycle":
+            scheduler = CustomThreePhaseLR(
+                optimizer,
+                base_lr=scheduler_config['base_lr'],
+                max_lr=scheduler_config['max_lr'],
+                min_lr=scheduler_config['min_lr'],
+                phase1_epochs=scheduler_config['phase1_epochs'],
+                phase2_epochs=scheduler_config['phase2_epochs'],
+                phase3_epochs=scheduler_config['phase3_epochs']
+            )
+            print(f"Restored scheduler: base_lr={scheduler_config['base_lr']:.6f}, "
+                  f"max_lr={scheduler_config['max_lr']:.6f}, min_lr={scheduler_config['min_lr']:.8f}")
     else:
-        raise ValueError(f"Unknown scheduler: {args.scheduler}")
+        # Create scheduler from command-line arguments (new training or different scheduler type)
+        if args.scheduler == "cosine":
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
+        elif args.scheduler == "step":
+            scheduler = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
+        elif args.scheduler == "onecycle":
+            # Custom three-phase schedule:
+            # Phase 1: base_lr → max_lr over 40% of epochs
+            # Phase 2: max_lr → base_lr over 40% of epochs  
+            # Phase 3: base_lr → min_lr over 20% of epochs
+            
+            # Set up the three-phase schedule based on suggested LR
+            # Using ratio 1:10:100 (min_lr : base_lr : max_lr)
+            # The current_lr is ALREADY the suggested LR from the finder
+            max_lr = current_lr           # Use the suggested/configured LR as max
+            base_lr = current_lr / 10.0  # Start at 1/10th of max
+            min_lr = current_lr / 100.0   # End at 1/100th of max
+            
+            print(f"\n[DEBUG] Creating scheduler with:")
+            print(f"   - current_lr (from optimizer): {current_lr:.6f}")
+            print(f"   - max_lr: {max_lr:.6f}")
+            print(f"   - base_lr: {base_lr:.6f}")
+            print(f"   - min_lr: {min_lr:.8f}")
+            
+            # Calculate epoch boundaries (40% / 40% / 20%)
+            phase1_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
+            phase2_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
+            phase3_epochs = max(1, args.epochs - phase1_epochs - phase2_epochs)  # At least 1 epoch
+            
+            print(f"\n[OneCycleLR] Custom Three-Phase Schedule:")
+            print(f"   - Max LR: {max_lr:.6f} (from LR finder or --lr)")
+            print(f"   - Base LR: {base_lr:.6f}")
+            print(f"   - Min LR: {min_lr:.8f}")
+            print(f"   - Total epochs: {args.epochs}")
+            print(f"   - Phase 1: {phase1_epochs} epochs (40% - LR: {base_lr:.6f} → {max_lr:.6f})")
+            print(f"   - Phase 2: {phase2_epochs} epochs (40% - LR: {max_lr:.6f} → {base_lr:.6f})")
+            print(f"   - Phase 3: {phase3_epochs} epochs (20% - LR: {base_lr:.6f} → {min_lr:.8f})\n")
+            
+            scheduler = CustomThreePhaseLR(
+                optimizer,
+                base_lr=base_lr,
+                max_lr=max_lr,
+                min_lr=min_lr,
+                phase1_epochs=phase1_epochs,
+                phase2_epochs=phase2_epochs,
+                phase3_epochs=phase3_epochs
+            )
+            
+            # Initialize the scheduler to set the starting LR (only for new training)
+            if not args.resume_from:
+                scheduler.step()  # Set initial LR before training starts
+                
+                # DEBUG: Print what LR was actually set
+                actual_lr = optimizer.param_groups[0]['lr']
+                print(f"[DEBUG] After scheduler initialization, actual LR: {actual_lr:.8f}")
+                print(f"[DEBUG] This should be base_lr ({base_lr:.6f}) which is correct for the first epoch")
+        else:
+            raise ValueError(f"Unknown scheduler: {args.scheduler}")
     
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)  # Add label smoothing
 
@@ -410,7 +489,8 @@ def main():
         )
         start_epoch += 1  # Start from next epoch
         best_test_acc = max(test_acc) if test_acc else 0.0
-        print(f"Resuming training from epoch {start_epoch}")
+        print(f"Resumed training from epoch {start_epoch}")
+        print(f"Scheduler will continue from epoch {resume_epoch} (LR cycle will resume correctly)")
 
     scaler = GradScaler('cuda', enabled=args.amp)
 
@@ -418,8 +498,14 @@ def main():
         print(f"\nEpoch {epoch}/{args.epochs}")
         
         # Step scheduler BEFORE training to set the correct LR for this epoch
-        # (except for the first epoch where scheduler.step() was already called during initialization)
-        if epoch > start_epoch or args.scheduler != "onecycle":
+        # For new training with onecycle: already stepped during init (last_epoch=0), now step to epoch 1
+        # For resumed training: scheduler.last_epoch is the completed epoch, step() increments to current
+        if args.scheduler == "onecycle":
+            # For CustomThreePhaseLR: step() increments last_epoch and calculates LR for that epoch
+            # After loading snapshot: last_epoch = completed epoch, step() → last_epoch = current epoch
+            scheduler.step()  # This always increments last_epoch and sets LR for current epoch
+        else:
+            # For cosine/step schedulers: step every epoch (they handle the first step correctly)
             scheduler.step()
         
         current_lr = optimizer.param_groups[0]['lr']
@@ -453,20 +539,34 @@ def main():
             f"LR: {current_lr:.6f}"
         )
 
-        # Save snapshot based on frequency or best accuracy
-        should_save = False
+        # Save checkpoint after every epoch
+        scheduler_config = get_scheduler_config(scheduler, args.scheduler, args)
+        save_snapshot(
+            model, optimizer, scheduler, epoch, train_losses, train_acc, 
+            test_losses, test_acc, args.snapshot_dir, "resnet50", scheduler_config=scheduler_config
+        )
+        
+        # Additionally save best checkpoint if enabled
         if args.save_best and te_acc > best_test_acc:
             best_test_acc = te_acc
-            should_save = True
             print(f"New best validation accuracy: {te_acc:.2f}%")
-        elif not args.save_best and epoch % args.snapshot_freq == 0:
-            should_save = True
-
-        if should_save:
-            save_snapshot(
-                model, optimizer, scheduler, epoch, train_losses, train_acc, 
-                test_losses, test_acc, args.snapshot_dir, "resnet50"
-            )
+            # Save best checkpoint with special name
+            best_snapshot_path = os.path.join(args.snapshot_dir, "resnet50_best.pth")
+            snapshot = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'train_losses': train_losses,
+                'train_acc': train_acc,
+                'test_losses': test_losses,
+                'test_acc': test_acc,
+                'timestamp': datetime.now().isoformat(),
+                'best_test_acc': best_test_acc,
+                'scheduler_config': scheduler_config
+            }
+            torch.save(snapshot, best_snapshot_path)
+            print(f"Best checkpoint saved: {best_snapshot_path}")
         
         # Generate plots if requested
         if not args.no_plots and (args.plot_training or args.plot_evaluation):

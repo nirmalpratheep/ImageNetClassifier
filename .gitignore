@@ -27,7 +27,9 @@ data/
 # Training data (not needed for inference)
 data/
 *.tar.gz
-
+plots/
+outputs/
+snapshots/
 # Training logs
 log/
 logs/

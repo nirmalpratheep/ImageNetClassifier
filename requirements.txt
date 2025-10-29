@@ -22,6 +22,13 @@ tqdm>=4.65.0
 # LR Finder (REQUIRED - no fallback implementation)
 torch-lr-finder>=0.2.1
 
+# PyTorch Lightning for training
+pytorch-lightning>=2.0.0
+torchmetrics>=0.11.0
+
+# TensorBoard for visualization
+tensorboard>=2.13.0
+
 # Web interface (optional)
 gradio>=4.0.0
 

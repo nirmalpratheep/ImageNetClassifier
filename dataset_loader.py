@@ -131,9 +131,6 @@ def get_transforms(image_size=224, augmentation=True):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
     
-    # Calculate fill value in 0-255 scale for CoarseDropout
-    fill_value = tuple(int(m * 255.0) for m in mean)
-    
     if augmentation:
         # Training transforms with augmentation
         train_aug = Compose([
@@ -146,7 +143,6 @@ def get_transforms(image_size=224, augmentation=True):
                 num_holes_range=(1, 1),
                 hole_height_range=(16, 16),
                 hole_width_range=(16, 16),
-                fill_value=fill_value,
                 p=0.4,
             ),
             Normalize(mean=mean, std=std),

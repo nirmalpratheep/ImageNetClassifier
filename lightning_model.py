@@ -136,14 +136,15 @@ class ImageNetLightningModule(LightningModule):
         # Compute batch-level accuracy for per-step logging
         preds = logits.argmax(dim=-1)
         correct = (preds == y).float()
-        batch_acc = correct.mean()
+        batch_acc = correct.mean() * 100.0  # Convert to percentage (0-100)
         
         # Log metrics to TensorBoard
         # Train loss: logged both per-step and per-epoch
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        # Train accuracy: batch-level for per-step (shown in progress bar as train_acc_step)
-        self.log('train_acc_step', batch_acc * 100.0, on_step=True, on_epoch=False, prog_bar=True, logger=True, sync_dist=True)
-        # Train accuracy: epoch-level uses the accumulated metric
+        # Train accuracy: batch-level for per-step (shown in progress bar)
+        # Note: Don't sync across GPUs for per-step (each GPU reports its own batch accuracy)
+        self.log('train_acc_step', batch_acc, on_step=True, on_epoch=False, prog_bar=True, logger=True, sync_dist=False)
+        # Train accuracy: epoch-level uses the accumulated metric (sync across GPUs)
         self.log('train_acc', self.train_accuracy, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         
         return loss

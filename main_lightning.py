@@ -275,40 +275,46 @@ def main():
         # Learning rate monitor callback (logs LR to TensorBoard)
         lr_monitor = LearningRateMonitor(logging_interval='epoch')
         
-        # Setup training strategy for multi-GPU
-        if args.strategy == "auto":
-            if args.devices > 1:
-                strategy = DDPStrategy(find_unused_parameters=False)
-            else:
-                strategy = None
-        else:
-            strategy = args.strategy
-        
         # Determine precision
         if args.amp:
             precision = "16-mixed" if torch.cuda.is_available() else "32"
         else:
-            precision_map = {"16": "16-mixed", "32": "32", "bf16": "bf16-mixed"}
-            precision = precision_map.get(args.precision, "32")
+            if args.precision == "32":
+                precision = "32"
+            else:
+                precision = f"{args.precision}-mixed"
+        
+        # Setup training strategy for multi-GPU
+        trainer_kwargs = {
+            'max_epochs': args.epochs,
+            'accelerator': args.accelerator,
+            'devices': args.devices,
+            'precision': precision,
+            'logger': logger,
+            'callbacks': [checkpoint_callback, lr_monitor],
+            'gradient_clip_val': args.gradient_clip_val,
+            'gradient_clip_algorithm': "norm",
+            'log_every_n_steps': 50,
+            'val_check_interval': 1.0,  # Validate every epoch
+            'enable_progress_bar': True,
+            'enable_model_summary': True,
+            'deterministic': False,  # Set to True for reproducibility (slower)
+            'benchmark': True,
+        }
+        
+        # Setup strategy - only add if needed (don't pass None)
+        strategy_display = "auto (default)"
+        if args.strategy == "auto":
+            if args.devices > 1:
+                trainer_kwargs['strategy'] = DDPStrategy(find_unused_parameters=False)
+                strategy_display = "ddp"
+            # If single GPU/CPU, don't add strategy parameter (use Lightning default)
+        elif args.strategy != "auto":
+            trainer_kwargs['strategy'] = args.strategy
+            strategy_display = args.strategy
         
         # Create trainer
-        trainer = Trainer(
-            max_epochs=args.epochs,
-            accelerator=args.accelerator,
-            devices=args.devices,
-            strategy=strategy,
-            precision=precision,
-            logger=logger,
-            callbacks=[checkpoint_callback, lr_monitor],
-            gradient_clip_val=args.gradient_clip_val,
-            gradient_clip_algorithm="norm",
-            log_every_n_steps=50,
-            val_check_interval=1.0,  # Validate every epoch
-            enable_progress_bar=True,
-            enable_model_summary=True,
-            deterministic=False,  # Set to True for reproducibility (slower)
-            benchmark=True,
-        )
+        trainer = Trainer(**trainer_kwargs)
         
         # Start training
         print("\n" + "="*70)
@@ -322,7 +328,7 @@ def main():
         print(f"Scheduler: {args.scheduler}")
         print(f"Epochs: {args.epochs}")
         print(f"Precision: {precision}")
-        print(f"Strategy: {strategy}")
+        print(f"Strategy: {strategy_display}")
         print("="*70 + "\n")
         
         trainer.fit(
@@ -335,10 +341,13 @@ def main():
         print("TRAINING COMPLETED")
         print("="*70)
         print(f"Best checkpoint: {checkpoint_callback.best_model_path}")
+        print(f"Latest checkpoint: {checkpoint_callback.last_model_path}")
         print(f"TensorBoard logs: {logger.log_dir}")
         print(f"To view logs: tensorboard --logdir {args.log_dir}")
         if log_file:
             print(f"Stdout log: {log_file}")
+        print("\nTo resume training from this checkpoint, use:")
+        print(f"  python main_lightning.py --resume_from {checkpoint_callback.last_model_path} <other_args>")
         print("="*70)
     finally:
         # Close tee logger if it exists

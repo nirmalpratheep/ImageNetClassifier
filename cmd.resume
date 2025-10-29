@@ -1,0 +1,1 @@
+uv run python main_lightning.py --batch_size 128 --find_lr --lr_start 1e-05 --lr_end 10 --lr_iter 100 --lr_plot ./outputs/lr_finder_imagenet1k.png --data_dir ../data --epochs 10 --max_samples_per_class 10 --resume_from ./checkpoints/last.ckpt

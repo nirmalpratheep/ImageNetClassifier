@@ -34,7 +34,7 @@ snapshots/
 log/
 logs/
 *.log
-
+checkpoints/
 # Model checkpoints (we'll use Git LFS for the one we need)
 snapshots_complete/*.pth
 !snapshots_complete/cifar_epoch_249.pth

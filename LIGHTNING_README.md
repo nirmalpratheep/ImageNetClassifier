@@ -83,13 +83,37 @@ python main_lightning.py \
 
 ### Resume from Checkpoint
 
+To resume training from a checkpoint, use the `--resume_from` argument:
+
 ```bash
+# Resume from latest checkpoint
 python main_lightning.py \
     --data_dir ./data \
     --batch_size 256 \
     --epochs 50 \
     --resume_from ./checkpoints/last.ckpt
+
+# Resume from best checkpoint
+python main_lightning.py \
+    --data_dir ./data \
+    --batch_size 256 \
+    --epochs 50 \
+    --resume_from ./checkpoints/epoch=49-val_acc=0.7234-val_loss=1.2345.ckpt
+
+# Resume from specific checkpoint (after epoch 10)
+python main_lightning.py \
+    --data_dir ./data \
+    --batch_size 256 \
+    --epochs 50 \
+    --resume_from ./checkpoints/epoch=10-val_acc=0.6543-val_loss=1.5678.ckpt
 ```
+
+**Note**: When resuming:
+- Training will continue from the next epoch
+- Optimizer state is restored
+- Scheduler state is restored (LR cycle continues correctly)
+- All hyperparameters are preserved
+- You can change `--epochs` to train for more epochs
 
 ## TensorBoard Viewing
 

@@ -239,8 +239,7 @@ def main():
         batch_size=args.batch_size,
         image_size=224,
         num_workers=num_workers,
-        subset_size=None,  # Use all classes
-        augmentation=True,
+        subset_size=None,  #
         max_samples_per_class=args.max_samples_per_class
     )
     # Use val_loader as test_loader for compatibility

@@ -66,84 +66,55 @@ def find_lr(
         diverge_th=diverge_th
     )
     
-    # Get suggested LR using steepest descent point (better than minimum loss)
-    # Copy to plain lists and convert to Python floats to prevent reference/numpy type issues
-    losses = [float(x) for x in lr_finder.history['loss']]
-    lrs = [float(x) for x in lr_finder.history['lr']]
-    
-    print(f"[DEBUG] Got {len(lrs)} LR points from history")
-    print(f"[DEBUG] First LR value: {lrs[0]} (type: {type(lrs[0])})")
-    
-    # Find steepest descent point (minimum gradient = steepest negative slope)
-    if len(losses) > 1:
-        gradients = []
-        for i in range(1, len(losses)):
-            grad = (losses[i] - losses[i-1]) / (lrs[i] - lrs[i-1])
-            gradients.append(grad)
-        # Find the point with steepest negative gradient
-        steepest_idx = np.argmin(gradients) + 1
-        suggested_lr_raw = lrs[steepest_idx]
-    else:
-        # Fallback to minimum loss if only one point
-        suggested_lr_raw = lrs[losses.index(min(losses))]
-    
-    # IMMEDIATELY convert to Python float to avoid any numpy type issues
-    suggested_lr = float(suggested_lr_raw)
-    
-    print(f"\nSuggested learning rate (steepest descent): {suggested_lr:.6f}")
-    print(f"[DEBUG] Raw suggested_lr value (before conversion): {suggested_lr_raw}")
-    print(f"[DEBUG] Type of suggested_lr_raw: {type(suggested_lr_raw)}")
-    print(f"[DEBUG] After conversion to Python float: {suggested_lr}")
-    print(f"[DEBUG] Type of suggested_lr (after conversion): {type(suggested_lr)}")
-    
-    # DEBUG: Check if lr_finder has its own suggestion
-    if hasattr(lr_finder, 'best_lr'):
-        builtin_suggested = lr_finder.best_lr
-        print(f"[DEBUG] torch-lr-finder built-in suggestion: {builtin_suggested:.6f}")
-        print(f"[DEBUG] Using our custom steepest descent suggestion: {suggested_lr:.6f}")
-    
-    # Create and save plot if requested
+    # Get suggested LR from the plot method
+    # Use the plot method with suggested_lr=True to get the optimal LR
     fig = None
-    if plot and save_path:
+    suggested_lr = None
+    
+    if plot:
         try:
-            # Create output directory if it doesn't exist
-            output_dir = os.path.dirname(os.path.abspath(save_path))
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
+            # Use torch-lr-finder's built-in plot function with suggested_lr=True
+            # This will return the figure and may also set/return the suggested learning rate
+            result = lr_finder.plot(skip_start=10, skip_end=10, suggested_lr=True)
             
-            # DEBUG: Check suggested_lr before plot
-            print(f"[DEBUG] suggested_lr before plot: {suggested_lr:.6f}")
-            
-            # Use torch-lr-finder's built-in plot function
-            fig = lr_finder.plot(skip_start=10, skip_end=5)
-            
-            # DEBUG: Check suggested_lr after plot (but before reset)
-            print(f"[DEBUG] suggested_lr after plot (before reset): {suggested_lr:.6f}")
-            
-            # Save the plot
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"LR finder plot saved to: {save_path}")
-            
-            # Close figure to prevent blocking
-            plt.close(fig)
+            # Handle different return types from plot method
+            if isinstance(result, tuple):
+                fig = result[0]
+                if len(result) > 1:
+                    suggested_lr = float(result[1])
+                    print(f"Suggested learning rate from plot: {suggested_lr:.6f}")
+            else:
+                fig = result
                 
+            # Also check if lr_finder has a suggested_lr attribute set by the plot method
+            if suggested_lr is None and hasattr(lr_finder, 'suggested_lr'):
+                suggested_lr = float(lr_finder.suggested_lr)
+                print(f"Suggested learning rate from plot attribute: {suggested_lr:.6f}")
+            
+            # Save the plot if path provided
+            if save_path:
+                # Create output directory if it doesn't exist
+                output_dir = os.path.dirname(os.path.abspath(save_path))
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                
+                # Save the plot
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                print(f"LR finder plot saved to: {save_path}")
+                
+                # Close figure to prevent blocking
+                plt.close(fig)
+        
         except Exception as e:
             print(f"Warning: Could not create plot: {e}")
             fig = None
     
-    # DEBUG: Check suggested_lr before reset
-    print(f"[DEBUG] suggested_lr before reset: {suggested_lr:.6f}")
-    
     # Reset model and optimizer to original state
     lr_finder.reset()
     
-    # DEBUG: Verify suggested_lr hasn't changed
-    print(f"[DEBUG] suggested_lr after reset: {suggested_lr:.6f}")
-    print(f"[DEBUG] About to return suggested_lr: {suggested_lr}")
-    print(f"[DEBUG] Type before return: {type(suggested_lr)}")
+    # Ensure we return a Python float
+    return_lr = float(suggested_lr) if suggested_lr else float(start_lr * 10)
     
-    # Return a fresh copy to ensure no reference issues
-    return_lr = float(suggested_lr)
-    print(f"[DEBUG] return_lr (float copy): {return_lr}")
+    print(f"Final suggested learning rate: {return_lr:.6f}")
     
     return return_lr, fig

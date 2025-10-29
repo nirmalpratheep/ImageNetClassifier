@@ -1,8 +1,29 @@
 import os
 import torch
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
+from albumentations import Compose, Resize, RandomCrop, HorizontalFlip, ColorJitter, Rotate, Normalize, CoarseDropout
+try:
+    from albumentations.pytorch import ToTorchV2
+except ImportError:
+    from albumentations.pytorch import ToTensorV2 as ToTorchV2
 from PIL import Image
+
+
+class AlbumentationsTransform:
+    """Wrapper class for Albumentations transforms to work with PIL images."""
+    def __init__(self, transform):
+        self.transform = transform
+    
+    def __call__(self, image):
+        # Convert PIL image to numpy array
+        if isinstance(image, Image.Image):
+            image = np.array(image)
+        # Apply albumentations transform
+        if self.transform:
+            transformed = self.transform(image=image)
+            return transformed["image"]
+        return image
 
 
 class ImageNetDataset(Dataset):
@@ -104,33 +125,50 @@ class ImageNetDataset(Dataset):
 
 
 def get_transforms(image_size=224, augmentation=True):
-    """Get data transforms for training and validation."""
+    """Get data transforms for training and validation using Albumentations."""
+    
+    # ImageNet normalization values
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    
+    # Calculate fill value in 0-255 scale for CoarseDropout
+    fill_value = tuple(int(m * 255.0) for m in mean)
     
     if augmentation:
         # Training transforms with augmentation
-        train_transform = transforms.Compose([
-            transforms.Resize((image_size + 32, image_size + 32)),
-            transforms.RandomCrop(image_size),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-            transforms.RandomRotation(degrees=10),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        train_aug = Compose([
+            Resize(height=image_size + 32, width=image_size + 32),
+            RandomCrop(height=image_size, width=image_size),
+            HorizontalFlip(p=0.5),
+            ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.8),
+            Rotate(limit=10, p=0.5),
+            CoarseDropout(
+                num_holes_range=(1, 1),
+                hole_height_range=(16, 16),
+                hole_width_range=(16, 16),
+                fill_value=fill_value,
+                p=0.4,
+            ),
+            Normalize(mean=mean, std=std),
+            ToTorchV2(),
         ])
+        train_transform = AlbumentationsTransform(train_aug)
     else:
         # Training transforms without augmentation
-        train_transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        train_aug = Compose([
+            Resize(height=image_size, width=image_size),
+            Normalize(mean=mean, std=std),
+            ToTorchV2(),
         ])
+        train_transform = AlbumentationsTransform(train_aug)
     
     # Validation transforms (no augmentation)
-    val_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    val_aug = Compose([
+        Resize(height=image_size, width=image_size),
+        Normalize(mean=mean, std=std),
+        ToTorchV2(),
     ])
+    val_transform = AlbumentationsTransform(val_aug)
     
     return train_transform, val_transform
 

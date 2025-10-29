@@ -130,15 +130,21 @@ class ImageNetLightningModule(LightningModule):
         logits = self.forward(x)
         loss = self.criterion(logits, y)
         
-        # Update accuracy metric
+        # Update accuracy metric (for epoch-level aggregation)
         self.train_accuracy(logits, y)
+        
+        # Compute batch-level accuracy for per-step logging
+        preds = logits.argmax(dim=-1)
+        correct = (preds == y).float()
+        batch_acc = correct.mean()
         
         # Log metrics to TensorBoard
         # Train loss: logged both per-step and per-epoch
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        # Train accuracy: logged both per-step and per-epoch (as percentage 0-100)
-        # The metric will be automatically aggregated at epoch level
-        self.log('train_acc', self.train_accuracy, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        # Train accuracy: batch-level for per-step (shown in progress bar as train_acc_step)
+        self.log('train_acc_step', batch_acc * 100.0, on_step=True, on_epoch=False, prog_bar=True, logger=True, sync_dist=True)
+        # Train accuracy: epoch-level uses the accumulated metric
+        self.log('train_acc', self.train_accuracy, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         
         return loss
     

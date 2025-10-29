@@ -1,43 +1,0 @@
-Using 4 device(s)
-Loaded 1281167 samples from ../data/train
-Number of classes: 1000
-Loaded 52600 samples from ../data/val
-Number of classes: 1000
-DataModule setup complete: 1000 classes
-Training samples: 1281167
-Validation samples: 52600
-Dataset: ImageNet (1000 classes)
-
-======================================================================
-RUNNING LEARNING RATE FINDER
-======================================================================
-Running learning rate range test using torch-lr-finder...
-LR finder failed: CUDA out of memory. Tried to allocate 392.00 MiB. GPU 0 has a total capacity of 14.56 GiB of which 101.81 MiB is free. Including non-PyTorch memory, this process has 14.46 GiB memory in use. Of the allocated memory 14.02 GiB is allocated by PyTorch, and 324.24 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
-Continuing with original learning rate...
-======================================================================
-
-TensorBoard logs will be saved to: ./logs/imagenet_resnet50/version_20251036
-View with: tensorboard --logdir ./logs
-
-======================================================================
-STARTING TRAINING
-======================================================================
-Model: ResNet-50
-Classes: 1000
-Batch size per GPU: 256
-Total batch size: 1024
-Learning rate: 0.010000
-Scheduler: onecycle
-Epochs: 10
-Precision: 32
-Strategy: ddp
-======================================================================
-
-Loaded 1281167 samples from ../data/train
-Number of classes: 1000
-Loaded 52600 samples from ../data/val
-Number of classes: 1000
-DataModule setup complete: 1000 classes
-Training samples: 1281167
-Validation samples: 52600
-Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking DataLoader 0:   0%|          | 0/2 [00:00<?, ?it/s]Sanity Checking DataLoader 0:  50%|#####     | 1/2 [00:06<00:06,  0.16it/s]Sanity Checking DataLoader 0: 100%|##########| 2/2 [00:06<00:00,  0.31it/s]                                                                           Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/1251 [00:00<?, ?it/s]

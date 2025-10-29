@@ -97,7 +97,8 @@ def parse_args():
     parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clipping value")
     
     # Device arguments
-    parser.add_argument("--devices", type=int, default=None, help="Number of GPUs (None = auto-detect)")
+    parser.add_argument("--devices", type=int, default=None, help="Number of GPUs (None = auto-detect all)")
+    parser.add_argument("--use_multi_gpu", action="store_true", help="Force use of all available GPUs (same as --devices with auto-detect)")
     parser.add_argument("--accelerator", type=str, default="auto", help="Accelerator type")
     parser.add_argument("--strategy", type=str, default="auto", help="Training strategy (ddp, ddp_spawn, etc.)")
     
@@ -168,10 +169,60 @@ def main():
         seed_everything(args.seed, workers=True)
         
         # Setup device and multi-GPU
-        if args.devices is None:
-            args.devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+        if args.use_multi_gpu:
+            # Force use all available GPUs
+            if torch.cuda.is_available():
+                args.devices = torch.cuda.device_count()
+                print(f"--use_multi_gpu specified: using all {args.devices} GPU(s)")
+            else:
+                print("Warning: --use_multi_gpu specified but CUDA not available")
+                args.devices = 1
         
-        print(f"Using {args.devices} device(s)")
+        if args.devices is None:
+            if torch.cuda.is_available():
+                num_gpus = torch.cuda.device_count()
+                args.devices = num_gpus
+                print(f"Auto-detected {num_gpus} GPU(s)")
+            else:
+                args.devices = 1
+                print("CUDA not available, using CPU")
+        
+        # Verify GPU availability
+        if torch.cuda.is_available():
+            num_gpus_available = torch.cuda.device_count()
+            print(f"CUDA available: {num_gpus_available} GPU(s) detected")
+            
+            # Check for CUDA_VISIBLE_DEVICES restriction
+            cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+            if cuda_visible is not None:
+                print(f"⚠️  WARNING: CUDA_VISIBLE_DEVICES is set to: {cuda_visible}")
+                print("  This WILL restrict which GPUs are available to PyTorch!")
+                print("  For multi-GPU training, you should unset this variable:")
+                print("    unset CUDA_VISIBLE_DEVICES")
+                print("  Or set it to use all GPUs:")
+                print("    export CUDA_VISIBLE_DEVICES=0,1,2,3")
+            
+            # Clear any existing GPU memory/cache
+            torch.cuda.empty_cache()
+            
+            # Check GPU memory usage
+            for i in range(num_gpus_available):
+                gpu_name = torch.cuda.get_device_name(i)
+                memory_allocated = torch.cuda.memory_allocated(i) / 1024**3  # GB
+                memory_reserved = torch.cuda.memory_reserved(i) / 1024**3  # GB
+                print(f"  GPU {i}: {gpu_name}")
+                if memory_allocated > 0.1 or memory_reserved > 0.1:
+                    print(f"    ⚠️  Warning: GPU {i} has {memory_reserved:.2f} GB memory allocated")
+                    print(f"       You may want to clear it with: torch.cuda.empty_cache() or restart Python")
+        
+        # Convert to list format for explicit GPU specification
+        if torch.cuda.is_available() and args.devices > 1:
+            device_list = list(range(args.devices))
+            print(f"Configuring trainer to use GPUs: {device_list}")
+        else:
+            device_list = args.devices
+        
+        print(f"Final configuration: using {args.devices} device(s)")
         
         # Create data module
         data_module = ImageNetDataModule(
@@ -242,6 +293,14 @@ def main():
                 model.hparams.lr = suggested_lr  # Also update hyperparameters
                 print(f"Updated model learning rate to: {suggested_lr:.2e}")
                 
+                # Move model back to CPU to ensure clean state for multi-GPU training
+                # PyTorch Lightning will handle device placement during training
+                if hasattr(model.model, 'cpu'):
+                    model.model = model.model.cpu()
+                # Clear CUDA cache to free up GPU memory
+                torch.cuda.empty_cache()
+                print("Model moved to CPU and GPU cache cleared (trainer will handle multi-GPU setup)")
+                
             except Exception as e:
                 print(f"LR finder failed: {e}")
                 import traceback
@@ -285,10 +344,22 @@ def main():
                 precision = f"{args.precision}-mixed"
         
         # Setup training strategy for multi-GPU
+        # For PyTorch Lightning, use integer for devices (works better than list)
+        # Lightning will automatically use devices 0 through args.devices-1
+        devices_param = args.devices  # Use integer, not list
+        
+        # Determine accelerator - must be "gpu" for multi-GPU, not "auto"
+        if args.devices > 1 and torch.cuda.is_available():
+            accelerator = "gpu"
+        elif args.accelerator == "auto":
+            accelerator = "gpu" if torch.cuda.is_available() else "cpu"
+        else:
+            accelerator = args.accelerator
+        
         trainer_kwargs = {
             'max_epochs': args.epochs,
-            'accelerator': args.accelerator,
-            'devices': args.devices,
+            'accelerator': accelerator,
+            'devices': devices_param,
             'precision': precision,
             'logger': logger,
             'callbacks': [checkpoint_callback, lr_monitor],
@@ -303,18 +374,63 @@ def main():
         }
         
         # Setup strategy - only add if needed (don't pass None)
+        # Use "ddp_spawn" for better process isolation - spawns clean processes
         strategy_display = "auto (default)"
         if args.strategy == "auto":
             if args.devices > 1:
-                trainer_kwargs['strategy'] = DDPStrategy(find_unused_parameters=False)
-                strategy_display = "ddp"
+                # Use "ddp_spawn" which explicitly spawns processes and isolates GPUs better
+                trainer_kwargs['strategy'] = "ddp_spawn"
+                strategy_display = "ddp_spawn"
+                print(f"Multi-GPU detected: Using DDP Spawn strategy with {args.devices} GPUs")
+                print(f"  Devices: {devices_param}, Accelerator: {accelerator}")
+                print(f"  Strategy: 'ddp_spawn' (PyTorch Lightning will spawn {args.devices} processes, one per GPU)")
             # If single GPU/CPU, don't add strategy parameter (use Lightning default)
         elif args.strategy != "auto":
+            # Pass through the strategy string directly
             trainer_kwargs['strategy'] = args.strategy
             strategy_display = args.strategy
         
+        # Print final configuration for debugging
+        print(f"\nTrainer Configuration:")
+        print(f"  Accelerator: {accelerator}")
+        print(f"  Devices: {devices_param}")
+        print(f"  Strategy: {strategy_display}")
+        print(f"  Precision: {precision}")
+        
         # Create trainer
         trainer = Trainer(**trainer_kwargs)
+        
+        # Verify trainer configuration
+        print(f"\nTrainer Created Successfully:")
+        print(f"  Number of devices: {getattr(trainer, 'num_devices', 'N/A')}")
+        print(f"  Strategy: {type(trainer.strategy).__name__}")
+        print(f"  Strategy class: {trainer.strategy.__class__.__name__}")
+        
+        # Try to get process/world size info if available
+        try:
+            num_processes = getattr(trainer, 'num_processes', None)
+            if num_processes is not None:
+                print(f"  Number of processes: {num_processes}")
+        except AttributeError:
+            pass
+        
+        try:
+            world_size = getattr(trainer.strategy, 'world_size', None)
+            if world_size is not None:
+                print(f"  World size: {world_size}")
+        except AttributeError:
+            pass
+        
+        # Check PyTorch Lightning version
+        import pytorch_lightning as pl
+        print(f"  PyTorch Lightning version: {pl.__version__}")
+        
+        # Important: With DDP, the actual training will spawn separate processes
+        # Each process will use one GPU. Check nvidia-smi AFTER training starts.
+        if args.devices > 1:
+            print(f"\n⚠️  IMPORTANT: With DDP and {args.devices} devices, PyTorch Lightning will spawn {args.devices} processes.")
+            print(f"   You should see {args.devices} Python processes in nvidia-smi once training starts.")
+            print(f"   If you only see 1 process, there may be a configuration issue.")
         
         # Start training
         print("\n" + "="*70)

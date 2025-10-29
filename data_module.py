@@ -6,7 +6,11 @@ from dataset_loader import ImageNetDataset, get_transforms
 
 
 class ImageNetDataModule(LightningDataModule):
-    """Lightning DataModule for ImageNet dataset."""
+    """Lightning DataModule for ImageNet dataset.
+    
+    Automatically handles DistributedSampler when used with DDP.
+    PyTorch Lightning will wrap the sampler for distributed training.
+    """
     
     def __init__(
         self,
@@ -18,6 +22,7 @@ class ImageNetDataModule(LightningDataModule):
         augmentation: bool = True,
         max_samples_per_class: int = None,
         pin_memory: bool = True,
+        prefetch_factor: int = 2,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -30,6 +35,7 @@ class ImageNetDataModule(LightningDataModule):
         self.augmentation = augmentation
         self.max_samples_per_class = max_samples_per_class
         self.pin_memory = pin_memory
+        self.prefetch_factor = prefetch_factor
         
         self.train_dataset = None
         self.val_dataset = None
@@ -66,25 +72,35 @@ class ImageNetDataModule(LightningDataModule):
             print(f"Validation samples: {len(self.val_dataset)}")
     
     def train_dataloader(self):
-        """Create training DataLoader."""
+        """Create training DataLoader with optimized settings.
+        
+        Note: When using DDP, Lightning automatically uses DistributedSampler
+        when shuffle=True is specified. Each GPU will see unique, non-overlapping batches.
+        """
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=True,  # Lightning wraps this with DistributedSampler in DDP mode
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             drop_last=True,
             persistent_workers=self.num_workers > 0,
+            prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
         )
     
     def val_dataloader(self):
-        """Create validation DataLoader."""
+        """Create validation DataLoader with optimized settings.
+        
+        Note: When using DDP, Lightning automatically uses DistributedSampler
+        for validation to ensure each GPU sees different samples.
+        """
         return DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
-            shuffle=False,
+            shuffle=False,  # Lightning wraps this with DistributedSampler in DDP mode
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             drop_last=False,
             persistent_workers=self.num_workers > 0,
+            prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
         )

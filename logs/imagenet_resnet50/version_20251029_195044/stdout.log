@@ -1,0 +1,21 @@
+--use_multi_gpu specified: using all 4 GPU(s)
+CUDA available: 4 GPU(s) detected
+  GPU 0: Tesla T4
+  GPU 1: Tesla T4
+  GPU 2: Tesla T4
+  GPU 3: Tesla T4
+Configuring trainer to use GPUs: [0, 1, 2, 3]
+Final configuration: using 4 device(s)
+Loaded 1281167 samples from ../data/train
+Number of classes: 1000
+Loaded 52600 samples from ../data/val
+Number of classes: 1000
+DataModule setup complete: 1000 classes
+Training samples: 1281167
+Validation samples: 52600
+Dataset: ImageNet (1000 classes)
+
+======================================================================
+RUNNING LEARNING RATE FINDER
+======================================================================
+Running learning rate range test using torch-lr-finder...

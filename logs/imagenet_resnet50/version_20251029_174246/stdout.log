@@ -1,0 +1,23 @@
+Using 1 device(s)
+Loaded 1281167 samples from ../data/train
+Number of classes: 1000
+Loaded 52600 samples from ../data/val
+Number of classes: 1000
+DataModule setup complete: 1000 classes
+Training samples: 1281167
+Validation samples: 52600
+Dataset: ImageNet (1000 classes)
+
+======================================================================
+RUNNING LEARNING RATE FINDER
+======================================================================
+Running learning rate range test using torch-lr-finder...
+Learning rate search finished. See the graph with {finder_name}.plot()
+Warning: Could not create plot: LRFinder.plot() got an unexpected keyword argument 'suggested_lr'. Did you mean 'suggest_lr'?
+Final suggested learning rate: 0.000100
+
+Suggested learning rate: 1.00e-04
+LR finder plot saved to: ./outputs/lr_finder_imagenet1k.png
+Updated model learning rate to: 1.00e-04
+======================================================================
+

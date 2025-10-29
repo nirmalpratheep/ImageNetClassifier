@@ -64,7 +64,8 @@ def parse_args():
     # Data arguments
     parser.add_argument("--data_dir", type=str, default="./data", help="Data directory")
     parser.add_argument("--image_size", type=int, default=224, help="Image size")
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of data loader workers")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of data loader workers (recommended: 4-16 based on CPU cores)")
+    parser.add_argument("--prefetch_factor", type=int, default=2, help="Number of batches prefetched per worker (default: 2)")
     parser.add_argument("--subset_size", type=int, default=None, help="Limit number of classes")
     parser.add_argument("--max_samples_per_class", type=int, default=None, help="Max samples per class")
     parser.add_argument("--augmentation", action="store_true", default=True, help="Enable data augmentation")
@@ -91,10 +92,13 @@ def parse_args():
     parser.add_argument("--save_stdout", action="store_true", default=True, help="Save all stdout to file")
     
     # Training features
-    parser.add_argument("--amp", action="store_true", help="Enable mixed precision training")
-    parser.add_argument("--precision", type=str, default="32", choices=["16", "32", "bf16"],
-                       help="Precision (16/32/bf16)")
+    parser.add_argument("--amp", action="store_true", help="Enable mixed precision training (deprecated: use --precision 16)")
+    parser.add_argument("--precision", type=str, default="16", choices=["16", "32", "bf16"],
+                       help="Precision (16=FP16 mixed precision, 32=FP32, bf16=BF16). Default: 16 (FP16 mixed precision enabled)")
+    parser.add_argument("--no_amp", action="store_true", help="Disable mixed precision, use FP32 (sets precision to 32)")
     parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clipping value")
+    parser.add_argument("--accumulate_grad_batches", type=int, default=1, 
+                       help="Number of batches to accumulate before optimizer step (effective batch size = batch_size × accumulate_grad_batches × num_gpus)")
     
     # Device arguments
     parser.add_argument("--devices", type=int, default=None, help="Number of GPUs (None = auto-detect all)")
@@ -230,6 +234,7 @@ def main():
             batch_size=args.batch_size,
             image_size=args.image_size,
             num_workers=args.num_workers,
+            prefetch_factor=args.prefetch_factor,
             subset_size=args.subset_size,
             augmentation=args.augmentation,
             max_samples_per_class=args.max_samples_per_class,
@@ -238,6 +243,16 @@ def main():
         # Setup data to get num_classes
         data_module.setup("fit")
         num_classes = data_module.num_classes
+        
+        # Print DataLoader optimization info
+        print(f"\nDataLoader Optimization:")
+        print(f"  num_workers: {args.num_workers} (recommended: 4-16 based on CPU cores)")
+        print(f"  pin_memory: True (faster GPU transfer)")
+        print(f"  prefetch_factor: {args.prefetch_factor} (batches prefetched per worker)")
+        print(f"  persistent_workers: {args.num_workers > 0} (keep workers alive between epochs)")
+        if args.devices > 1:
+            print(f"  DistributedSampler: Enabled automatically by Lightning for DDP")
+            print(f"    - Each GPU sees unique, non-overlapping batches")
         
         print(f"Dataset: ImageNet ({num_classes} classes)")
         
@@ -334,14 +349,27 @@ def main():
         # Learning rate monitor callback (logs LR to TensorBoard)
         lr_monitor = LearningRateMonitor(logging_interval='epoch')
         
-        # Determine precision
-        if args.amp:
+        # Determine precision (FP16 mixed precision enabled by default)
+        # PyTorch Lightning uses torch.cuda.amp automatically when precision="16-mixed"
+        if args.no_amp:
+            # Force FP32 if --no_amp is specified
+            precision = "32"
+            print("Mixed precision DISABLED: Using FP32 (--no_amp flag set)")
+        elif args.amp:
+            # Legacy --amp flag support
             precision = "16-mixed" if torch.cuda.is_available() else "32"
+            print("Mixed precision enabled via --amp flag")
         else:
+            # Default: use precision argument (defaults to "16" for FP16 mixed precision)
             if args.precision == "32":
                 precision = "32"
             else:
+                # Use mixed precision (16-mixed or bf16-mixed)
                 precision = f"{args.precision}-mixed"
+        
+        if precision in ["16-mixed", "bf16-mixed"] and torch.cuda.is_available():
+            print(f"Mixed Precision Training (FP16/BF16) enabled via torch.cuda.amp")
+            print(f"  - Reduces memory usage → allows larger batch sizes → faster training")
         
         # Setup training strategy for multi-GPU
         # For PyTorch Lightning, use integer for devices (works better than list)
@@ -365,6 +393,7 @@ def main():
             'callbacks': [checkpoint_callback, lr_monitor],
             'gradient_clip_val': args.gradient_clip_val,
             'gradient_clip_algorithm': "norm",
+            'accumulate_grad_batches': args.accumulate_grad_batches,
             'log_every_n_steps': 50,
             'val_check_interval': 1.0,  # Validate every epoch
             'enable_progress_bar': True,
@@ -390,12 +419,24 @@ def main():
             trainer_kwargs['strategy'] = args.strategy
             strategy_display = args.strategy
         
+        # Calculate effective batch size
+        effective_batch_size = args.batch_size * args.accumulate_grad_batches * args.devices
+        print(f"\nBatch Size Configuration:")
+        print(f"  Per-GPU batch size: {args.batch_size}")
+        print(f"  Gradient accumulation: {args.accumulate_grad_batches} batches")
+        print(f"  Number of GPUs: {args.devices}")
+        print(f"  Effective batch size: {effective_batch_size} (batch_size × accumulate_grad_batches × num_gpus)")
+        
         # Print final configuration for debugging
         print(f"\nTrainer Configuration:")
         print(f"  Accelerator: {accelerator}")
         print(f"  Devices: {devices_param}")
         print(f"  Strategy: {strategy_display}")
         print(f"  Precision: {precision}")
+        if precision in ["16-mixed", "bf16-mixed"]:
+            print(f"    → Using torch.cuda.amp for automatic mixed precision")
+            print(f"    → Memory efficient: enables larger batch sizes")
+        print(f"  Gradient accumulation: {args.accumulate_grad_batches} batches")
         
         # Create trainer
         trainer = Trainer(**trainer_kwargs)

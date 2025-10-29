@@ -1,0 +1,7 @@
+CUDA available: 4 GPU(s) detected
+  GPU 0: Tesla T4
+  GPU 1: Tesla T4
+  GPU 2: Tesla T4
+  GPU 3: Tesla T4
+Configuring trainer to use GPUs: [0, 1, 2, 3]
+Final configuration: using 4 device(s)

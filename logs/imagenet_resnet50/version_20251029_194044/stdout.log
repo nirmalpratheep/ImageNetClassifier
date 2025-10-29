@@ -1,0 +1,49 @@
+--use_multi_gpu specified: using all 4 GPU(s)
+CUDA available: 4 GPU(s) detected
+  GPU 0: Tesla T4
+  GPU 1: Tesla T4
+  GPU 2: Tesla T4
+  GPU 3: Tesla T4
+Configuring trainer to use GPUs: [0, 1, 2, 3]
+Final configuration: using 4 device(s)
+Loaded 1281167 samples from ../data/train
+Number of classes: 1000
+Loaded 52600 samples from ../data/val
+Number of classes: 1000
+DataModule setup complete: 1000 classes
+Training samples: 1281167
+Validation samples: 52600
+Dataset: ImageNet (1000 classes)
+
+======================================================================
+RUNNING LEARNING RATE FINDER
+======================================================================
+Running learning rate range test using torch-lr-finder...
+LR finder failed: CUDA out of memory. Tried to allocate 294.00 MiB. GPU 0 has a total capacity of 14.56 GiB of which 183.75 MiB is free. Process 11894 has 13.73 GiB memory in use. Process 12084 has 220.00 MiB memory in use. Including non-PyTorch memory, this process has 220.00 MiB memory in use. Process 12085 has 220.00 MiB memory in use. Of the allocated memory 97.73 MiB is allocated by PyTorch, and 20.27 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+Continuing with original learning rate...
+======================================================================
+
+TensorBoard logs will be saved to: ./logs/imagenet_resnet50/version_20251037
+View with: tensorboard --logdir ./logs
+
+======================================================================
+STARTING TRAINING
+======================================================================
+Model: ResNet-50
+Classes: 1000
+Batch size per GPU: 512
+Total batch size: 2048
+Learning rate: 0.010000
+Scheduler: onecycle
+Epochs: 10
+Precision: 32
+Strategy: ddp
+======================================================================
+
+Loaded 1281167 samples from ../data/train
+Number of classes: 1000
+Loaded 52600 samples from ../data/val
+Number of classes: 1000
+DataModule setup complete: 1000 classes
+Training samples: 1281167
+Validation samples: 52600

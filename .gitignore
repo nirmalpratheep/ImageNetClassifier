@@ -27,13 +27,8 @@ data/
 # Training data (not needed for inference)
 data/
 *.tar.gz
-plots/
-outputs/
 snapshots/
 # Training logs
-log/
-logs/
-*.log
 checkpoints/
 # Model checkpoints (we'll use Git LFS for the one we need)
 snapshots_complete/*.pth

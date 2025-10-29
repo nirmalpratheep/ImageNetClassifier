@@ -62,7 +62,14 @@ class CustomThreePhaseLR:
 
 
 class ImageNetLightningModule(LightningModule):
-    """Lightning Module for ImageNet classification."""
+    """Lightning Module for ImageNet classification.
+    
+    Mixed Precision Training (FP16/BF16):
+    - Automatically handled by PyTorch Lightning when precision="16-mixed" or "bf16-mixed"
+    - Lightning uses torch.cuda.amp internally for automatic mixed precision
+    - No manual autocast/GradScaler needed - Lightning handles it
+    - Reduces memory usage, enables larger batch sizes, and speeds up training
+    """
     
     def __init__(
         self,

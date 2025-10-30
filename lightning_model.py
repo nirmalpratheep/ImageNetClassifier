@@ -11,11 +11,13 @@ from model_resnet50 import ResNet50
 
 class CustomThreePhaseLR:
     """Custom learning rate scheduler implementing three-phase schedule:
-    Phase 1: base_lr → max_lr over 40% of epochs (warmup/up)
-    Phase 2: max_lr → base_lr over 40% of epochs (cool down)
-    Phase 3: base_lr → min_lr over 20% of epochs (annealing)
+    Phase 1: max_lr/25 → max_lr over 40% of epochs (warmup/up)
+    Phase 2: max_lr → max_lr/100 over 40% of epochs (cool down)
+    Phase 3: max_lr/100 → 0.00001 over 20% of epochs (annealing)
+    
+    Also includes momentum scheduling from momentum_range[0] to momentum_range[1].
     """
-    def __init__(self, optimizer, base_lr, max_lr, min_lr, phase1_epochs, phase2_epochs, phase3_epochs):
+    def __init__(self, optimizer, base_lr, max_lr, min_lr, phase1_epochs, phase2_epochs, phase3_epochs, momentum_range=(0.95, 0.85)):
         self.optimizer = optimizer
         self.base_lr = base_lr
         self.max_lr = max_lr
@@ -25,6 +27,8 @@ class CustomThreePhaseLR:
         self.phase3_epochs = phase3_epochs
         self.total_epochs = phase1_epochs + phase2_epochs + phase3_epochs
         self.last_epoch = -1
+        self.momentum_start = momentum_range[0]
+        self.momentum_end = momentum_range[1]
     
     def step(self, epoch=None):
         if epoch is None:
@@ -36,23 +40,33 @@ class CustomThreePhaseLR:
         
         # Determine which phase we're in and calculate LR
         if current_epoch < self.phase1_epochs:
-            # Phase 1: linear increase from base_lr to max_lr
+            # Phase 1: linear increase from max_lr/25 to max_lr
+            phase1_start_lr = self.max_lr / 25.0
             p = current_epoch / self.phase1_epochs
-            lr = self.base_lr + p * (self.max_lr - self.base_lr)
+            lr = phase1_start_lr + p * (self.max_lr - phase1_start_lr)
             self.current_phase = 1
         elif current_epoch < self.phase1_epochs + self.phase2_epochs:
-            # Phase 2: linear decrease from max_lr back to base_lr
+            # Phase 2: linear decrease from max_lr to max_lr/100
+            phase2_end_lr = self.max_lr / 100.0
             p = (current_epoch - self.phase1_epochs) / self.phase2_epochs
-            lr = self.max_lr - p * (self.max_lr - self.base_lr)
+            lr = self.max_lr - p * (self.max_lr - phase2_end_lr)
             self.current_phase = 2
         else:
-            # Phase 3: linear decrease from base_lr to min_lr
+            # Phase 3: linear decrease from max_lr/100 to 0.00001
+            phase3_start_lr = self.max_lr / 100.0
+            phase3_end_lr = 0.00001
             p = (current_epoch - self.phase1_epochs - self.phase2_epochs) / self.phase3_epochs
-            lr = self.base_lr - p * (self.base_lr - self.min_lr)
+            lr = phase3_start_lr - p * (phase3_start_lr - phase3_end_lr)
             self.current_phase = 3
         
+        # Calculate momentum: linear decrease from momentum_start to momentum_end over all epochs
+        momentum_p = current_epoch / self.total_epochs if self.total_epochs > 0 else 0.0
+        momentum = self.momentum_start - momentum_p * (self.momentum_start - self.momentum_end)
+        
+        # Update optimizer parameters
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
+            param_group['momentum'] = momentum
     
     def state_dict(self):
         return {'last_epoch': self.last_epoch}
@@ -176,10 +190,11 @@ class ImageNetLightningModule(LightningModule):
         # Only print on main process (rank 0) to avoid duplication with DDP
         if self.trainer.global_rank == 0:
             current_lr = self.optimizers().param_groups[0]['lr']
+            current_momentum = self.optimizers().param_groups[0].get('momentum', self.momentum)
             current_epoch = self.current_epoch
             total_epochs = self.trainer.max_epochs
             print(f"\n{'='*70}")
-            print(f"Epoch {current_epoch + 1}/{total_epochs} - Learning Rate: {current_lr:.6f}")
+            print(f"Epoch {current_epoch + 1}/{total_epochs} - Learning Rate: {current_lr:.6f} - Momentum: {current_momentum:.4f}")
             print(f"{'='*70}")
     
     def on_train_epoch_end(self):
@@ -195,6 +210,7 @@ class ImageNetLightningModule(LightningModule):
             epoch_acc = epoch_acc_tensor if isinstance(epoch_acc_tensor, torch.Tensor) else torch.tensor(epoch_acc_tensor)
         
         current_lr = self.optimizers().param_groups[0]['lr']
+        current_momentum = self.optimizers().param_groups[0].get('momentum', self.momentum)
         
         # Convert to CPU float for storage
         epoch_loss_val = epoch_loss.item() if isinstance(epoch_loss, torch.Tensor) else float(epoch_loss)
@@ -212,6 +228,7 @@ class ImageNetLightningModule(LightningModule):
             print(f"  Train Loss: {epoch_loss_val:.4f}")
             print(f"  Train Accuracy: {epoch_acc_val:.2f}%")
             print(f"  Learning Rate: {current_lr:.6f}")
+            print(f"  Momentum: {current_momentum:.4f}")
             print(f"{'='*70}")
         
         # Reset metrics for next epoch
@@ -301,7 +318,8 @@ class ImageNetLightningModule(LightningModule):
                 min_lr=min_lr,
                 phase1_epochs=phase1_epochs,
                 phase2_epochs=phase2_epochs,
-                phase3_epochs=phase3_epochs
+                phase3_epochs=phase3_epochs,
+                momentum_range=(0.95, 0.85)
             )
             
             # Initialize scheduler
@@ -318,6 +336,7 @@ class ImageNetLightningModule(LightningModule):
         elif config['type'] == "step":
             return StepLR(optimizer, step_size=config['step_size'], gamma=config['gamma'])
         elif config['type'] == "onecycle":
+            momentum_range = config.get('momentum_range', (0.95, 0.85))
             self.custom_scheduler = CustomThreePhaseLR(
                 optimizer,
                 base_lr=config['base_lr'],
@@ -325,7 +344,8 @@ class ImageNetLightningModule(LightningModule):
                 min_lr=config['min_lr'],
                 phase1_epochs=config['phase1_epochs'],
                 phase2_epochs=config['phase2_epochs'],
-                phase3_epochs=config['phase3_epochs']
+                phase3_epochs=config['phase3_epochs'],
+                momentum_range=momentum_range
             )
             return self.custom_scheduler
         else:
@@ -352,6 +372,7 @@ class ImageNetLightningModule(LightningModule):
             config['phase1_epochs'] = scheduler.phase1_epochs
             config['phase2_epochs'] = scheduler.phase2_epochs
             config['phase3_epochs'] = scheduler.phase3_epochs
+            config['momentum_range'] = (scheduler.momentum_start, scheduler.momentum_end)
         
         return config
     

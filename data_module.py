@@ -84,9 +84,9 @@ class ImageNetDataModule(LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,  # Lightning wraps this with DistributedSampler in DDP mode
             num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
+            pin_memory=False,  # Disabled with persistent_workers to avoid tensor storage issues
             drop_last=True,
-            persistent_workers=self.num_workers > 0,
+            persistent_workers=self.num_workers > 0,  # Re-enabled with pin_memory=False
             prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
         )
     
@@ -101,8 +101,8 @@ class ImageNetDataModule(LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,  # Lightning wraps this with DistributedSampler in DDP mode
             num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
+            pin_memory=False,  # Disabled with persistent_workers to avoid tensor storage issues
             drop_last=False,
-            persistent_workers=self.num_workers > 0,
+            persistent_workers=self.num_workers > 0,  # Re-enabled with pin_memory=False
             prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
         )

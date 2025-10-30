@@ -146,50 +146,46 @@ class ImageNetDataset(Dataset):
 
 
 def get_transforms(image_size=224, augmentation=True):
-    """Get data transforms for training and validation.
-    
-    Uses torchvision transforms for faster processing.
-    """
-    import torchvision.transforms as transforms
+    """Get data transforms for training and validation using Albumentations."""
     
     # ImageNet normalization values
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
     
-    # Check if antialias is supported
-    try:
-        # Test if antialias parameter exists
-        test_resize = transforms.Resize(224, antialias=True)
-        antialias_supported = True
-    except TypeError:
-        antialias_supported = False
-    
-    resize_kwargs = {"antialias": True} if antialias_supported else {}
-    
     if augmentation:
-        # Training transforms with lightweight augmentation (faster than albumentations)
-        train_transform = transforms.Compose([
-            transforms.Resize(image_size + 32, **resize_kwargs),
-            transforms.RandomCrop(image_size),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-            transforms.ToTensor(),  # Convert PIL to tensor and scale to [0, 1]
-            transforms.Normalize(mean=mean, std=std),
+        # Training transforms with augmentation
+        train_aug = Compose([
+            Resize(height=image_size + 32, width=image_size + 32),
+            RandomCrop(height=image_size, width=image_size),
+            HorizontalFlip(p=0.5),
+            ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.8),
+            Rotate(limit=10, p=0.5),
+            CoarseDropout(
+                num_holes_range=(1, 1),
+                hole_height_range=(16, 16),
+                hole_width_range=(16, 16),
+                p=0.4,
+            ),
+            Normalize(mean=mean, std=std),
+            ToTorchV2(),
         ])
+        train_transform = AlbumentationsTransform(train_aug)
     else:
         # Training transforms without augmentation
-        train_transform = transforms.Compose([
-            transforms.Resize(image_size, **resize_kwargs),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=mean, std=std),
+        train_aug = Compose([
+            Resize(height=image_size, width=image_size),
+            Normalize(mean=mean, std=std),
+            ToTorchV2(),
         ])
+        train_transform = AlbumentationsTransform(train_aug)
     
     # Validation transforms (no augmentation)
-    val_transform = transforms.Compose([
-        transforms.Resize(image_size, **resize_kwargs),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
+    val_aug = Compose([
+        Resize(height=image_size, width=image_size),
+        Normalize(mean=mean, std=std),
+        ToTorchV2(),
     ])
+    val_transform = AlbumentationsTransform(val_aug)
     
     return train_transform, val_transform
 

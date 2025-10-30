@@ -157,9 +157,9 @@ def apply_warmup_lr(optimizer, base_lr: float, warmup_factor: float):
 
 class CustomThreePhaseLR:
     """Custom learning rate scheduler implementing three-phase schedule:
-    Phase 1: base_lr → max_lr over 40% of epochs (warmup/up)
-    Phase 2: max_lr → base_lr over 40% of epochs (cool down)
-    Phase 3: base_lr → min_lr over 20% of epochs (annealing)
+    Phase 1: max_lr/25 → max_lr over 40% of epochs (warmup/up)
+    Phase 2: max_lr → max_lr/100 over 40% of epochs (cool down)
+    Phase 3: max_lr/100 → 0.00001 over 20% of epochs (annealing)
     """
     def __init__(self, optimizer, base_lr, max_lr, min_lr, phase1_epochs, phase2_epochs, phase3_epochs):
         self.optimizer = optimizer
@@ -182,19 +182,23 @@ class CustomThreePhaseLR:
         
         # Determine which phase we're in and calculate LR
         if current_epoch < self.phase1_epochs:
-            # Phase 1: linear increase from base_lr to max_lr
+            # Phase 1: linear increase from max_lr/25 to max_lr
+            phase1_start_lr = self.max_lr / 25.0
             p = current_epoch / self.phase1_epochs
-            lr = self.base_lr + p * (self.max_lr - self.base_lr)
+            lr = phase1_start_lr + p * (self.max_lr - phase1_start_lr)
             self.current_phase = 1
         elif current_epoch < self.phase1_epochs + self.phase2_epochs:
-            # Phase 2: linear decrease from max_lr back to base_lr
+            # Phase 2: linear decrease from max_lr to max_lr/100
+            phase2_end_lr = self.max_lr / 100.0
             p = (current_epoch - self.phase1_epochs) / self.phase2_epochs
-            lr = self.max_lr - p * (self.max_lr - self.base_lr)
+            lr = self.max_lr - p * (self.max_lr - phase2_end_lr)
             self.current_phase = 2
         else:
-            # Phase 3: linear decrease from base_lr to min_lr
+            # Phase 3: linear decrease from max_lr/100 to 0.00001
+            phase3_start_lr = self.max_lr / 100.0
+            phase3_end_lr = 0.00001
             p = (current_epoch - self.phase1_epochs - self.phase2_epochs) / self.phase3_epochs
-            lr = self.base_lr - p * (self.base_lr - self.min_lr)
+            lr = phase3_start_lr - p * (phase3_start_lr - phase3_end_lr)
             self.current_phase = 3
         
         for param_group in self.optimizer.param_groups:
@@ -419,9 +423,9 @@ def main():
             scheduler = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
         elif args.scheduler == "onecycle":
             # Custom three-phase schedule:
-            # Phase 1: base_lr → max_lr over 40% of epochs
-            # Phase 2: max_lr → base_lr over 40% of epochs  
-            # Phase 3: base_lr → min_lr over 20% of epochs
+            # Phase 1: max_lr/25 → max_lr over 40% of epochs
+            # Phase 2: max_lr → max_lr/100 over 40% of epochs  
+            # Phase 3: max_lr/100 → 0.00001 over 20% of epochs
             
             # Set up the three-phase schedule based on suggested LR
             # Using ratio 1:10:100 (min_lr : base_lr : max_lr)
@@ -441,14 +445,18 @@ def main():
             phase2_epochs = max(1, int(args.epochs * 0.4))   # At least 1 epoch
             phase3_epochs = max(1, args.epochs - phase1_epochs - phase2_epochs)  # At least 1 epoch
             
+            phase1_start_lr = max_lr / 25.0
+            phase2_end_lr = max_lr / 100.0
+            phase3_start_lr = max_lr / 100.0
+            phase3_end_lr = 0.00001
             print(f"\n[OneCycleLR] Custom Three-Phase Schedule:")
             print(f"   - Max LR: {max_lr:.6f} (from LR finder or --lr)")
             print(f"   - Base LR: {base_lr:.6f}")
             print(f"   - Min LR: {min_lr:.8f}")
             print(f"   - Total epochs: {args.epochs}")
-            print(f"   - Phase 1: {phase1_epochs} epochs (40% - LR: {base_lr:.6f} → {max_lr:.6f})")
-            print(f"   - Phase 2: {phase2_epochs} epochs (40% - LR: {max_lr:.6f} → {base_lr:.6f})")
-            print(f"   - Phase 3: {phase3_epochs} epochs (20% - LR: {base_lr:.6f} → {min_lr:.8f})\n")
+            print(f"   - Phase 1: {phase1_epochs} epochs (40% - LR: {phase1_start_lr:.6f} → {max_lr:.6f})")
+            print(f"   - Phase 2: {phase2_epochs} epochs (40% - LR: {max_lr:.6f} → {phase2_end_lr:.6f})")
+            print(f"   - Phase 3: {phase3_epochs} epochs (20% - LR: {phase3_start_lr:.6f} → {phase3_end_lr:.8f})\n")
             
             scheduler = CustomThreePhaseLR(
                 optimizer,

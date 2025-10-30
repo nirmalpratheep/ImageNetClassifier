@@ -462,6 +462,7 @@ def main():
             print(f"    → Using torch.cuda.amp for automatic mixed precision")
             print(f"    → Memory efficient: enables larger batch sizes")
         print(f"  Gradient accumulation: {args.accumulate_grad_batches} batches")
+        print(f"  Gradient clipping: {args.gradient_clip_val} (norm)")
         
         # Create trainer
         trainer = Trainer(**trainer_kwargs)

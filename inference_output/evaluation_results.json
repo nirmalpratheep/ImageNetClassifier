@@ -1,0 +1,20 @@
+{
+  "checkpoint": "/mnt/data/ImageNetClassifier/checkpoints/last-v2.ckpt",
+  "evaluation": {
+    "loss": 1.0811172140744125,
+    "top1_acc": 77.38783359527588,
+    "top5_acc": 93.35170984268188
+  },
+  "checkpoint_metrics": {
+    "epoch": 80,
+    "global_step": 35683,
+    "best_val_acc": 77.42205262184143,
+    "best_val_loss": null,
+    "train_losses": [],
+    "train_accs": [],
+    "val_losses": [],
+    "val_accs": [],
+    "num_classes": 1000,
+    "lr": 0.3
+  }
+}

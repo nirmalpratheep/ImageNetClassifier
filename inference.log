@@ -1,0 +1,100 @@
+buntu@ip-172-31-59-214:~/ImageNetClassifier$ source  inference.cmd
+================================================================================
+INFERENCE AND EVALUATION
+================================================================================
+
+📂 Loading checkpoint: /mnt/data/ImageNetClassifier/checkpoints/last-v2.ckpt
+🖥️  Using device: cuda
+✓ Model loaded successfully
+✓ Model configured for 1000 classes
+
+📂 Loading validation dataset from: ../data
+Traceback (most recent call last):
+  File "/home/ubuntu/ImageNetClassifier/inference.py", line 484, in <module>
+    main()
+    ~~~~^^
+  File "/home/ubuntu/ImageNetClassifier/inference.py", line 437, in main
+    print(f"✓ Validation dataset loaded: {len(data_module.val_dataset)} samples")
+                                          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'NoneType' has no len()
+ubuntu@ip-172-31-59-214:~/ImageNetClassifier$ cat inference.
+inference.cmd  inference.py   
+ubuntu@ip-172-31-59-214:~/ImageNetClassifier$ cat inference.cmd 
+uv run python inference.py \
+    --checkpoint /mnt/data/ImageNetClassifier/checkpoints/last-v2.ckpt \
+    --data_dir ../data \
+    --batch_size 256 \
+    --num_workers 4 \
+    --output_dir ./inference_output \
+    --plot_name training_curves.png \
+    --log_dir ./logs \
+    --experiment_name imagenet_resnet50
+ubuntu@ip-172-31-59-214:~/ImageNetClassifier$  Loading validation dataset from: ../data
+Traceback (most recent call last):
+  File "/home/ubuntu/ImageNetClassifier/inference.py", line 484, in <module>
+    main()
+    ~~~~^^
+  File "/home/ubuntu/ImageNetClassifier/inference.py", line 437, in main
+    print(f"✓ Validation dataset loaded: {len(data_module.val_dataset)} samples")
+                                          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'NoneType' has no len()^C
+ubuntu@ip-172-31-59-214:~/ImageNetClassifier$ source  inference.cmd
+================================================================================
+INFERENCE AND EVALUATION
+================================================================================
+
+📂 Loading checkpoint: /mnt/data/ImageNetClassifier/checkpoints/last-v2.ckpt
+🖥️  Using device: cuda
+✓ Model loaded successfully
+✓ Model configured for 1000 classes
+
+📂 Loading validation dataset from: ../data
+DEBUG DataModule: max_samples_per_class = None
+Loaded 1281167 samples from ../data/train
+Number of classes: 1000
+DEBUG DataModule: After creating train_dataset, max_samples_per_class = None
+Loaded 52600 samples from ../data/val
+Number of classes: 1000
+DataModule setup complete: 1000 classes
+Training samples: 1281167
+Validation samples: 52600
+✓ Validation dataset loaded: 52600 samples
+
+🔄 Running inference on validation set...
+  Processed 50/206 batches...
+  Processed 100/206 batches...
+  Processed 150/206 batches...
+  Processed 200/206 batches...
+
+================================================================================
+EVALUATION RESULTS
+================================================================================
+
+📊 Model Performance:
+  Validation Loss:  1.0811
+  Top-1 Accuracy:   77.39%
+  Top-5 Accuracy:   93.35%
+
+📁 Checkpoint Info:
+  Epoch:             80
+  Global Step:       35683
+  Best Val Acc:      77.42%
+
+================================================================================
+
+📊 Loading training history...
+✓ Training history loaded from TensorBoard
+
+📈 Generating training curves...
+/home/ubuntu/ImageNetClassifier/inference.py:268: UserWarning: No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+  ax3.legend(fontsize=11)
+/home/ubuntu/ImageNetClassifier/inference.py:288: UserWarning: No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+  ax4.legend(fontsize=11)
+
+✓ Training curves saved to: ./inference_output/training_curves.png
+
+✓ Evaluation results saved to: ./inference_output/evaluation_results.json
+
+================================================================================
+EVALUATION COMPLETE
+================================================================================

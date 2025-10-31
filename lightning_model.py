@@ -7,6 +7,7 @@ from pytorch_lightning import LightningModule
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 from torchmetrics import Accuracy
 from model_resnet50 import ResNet50
+from torchvision.transforms import RandomErasing
 
 
 class CustomThreePhaseLR:
@@ -98,6 +99,10 @@ class ImageNetLightningModule(LightningModule):
         label_smoothing: float = 0.1,
         max_grad_norm: float = 1.0,
         scheduler_config: dict = None,
+        cutmix_prob: float = 0.0,
+        cutmix_alpha: float = 1.0,
+        mixup_alpha: float = 0.0,
+        random_erasing_p: float = 0.0,
     ):
         super().__init__()
         self.save_hyperparameters(ignore=['scheduler_config'])
@@ -113,6 +118,11 @@ class ImageNetLightningModule(LightningModule):
         self.label_smoothing = label_smoothing
         self.max_grad_norm = max_grad_norm
         self.scheduler_config = scheduler_config
+        self.cutmix_prob = float(cutmix_prob)
+        self.cutmix_alpha = float(cutmix_alpha)
+        self.mixup_alpha = float(mixup_alpha)
+        self.random_erasing_p = float(random_erasing_p)
+        self._random_erasing = RandomErasing(p=self.random_erasing_p, inplace=True) if self.random_erasing_p > 0.0 else None
         
         # Create model
         self.model = ResNet50(num_classes=num_classes)
@@ -141,8 +151,33 @@ class ImageNetLightningModule(LightningModule):
     
     def training_step(self, batch, batch_idx):
         x, y = batch
-        logits = self.forward(x)
-        loss = self.criterion(logits, y)
+        # Random Erasing (tensor-level) before forward
+        if self._random_erasing is not None:
+            # Apply per-sample
+            x = torch.stack([self._random_erasing(img) for img in x])
+
+        use_cutmix = self.cutmix_prob > 0.0 and self.cutmix_alpha > 0.0 and self.training and torch.rand(1, device=x.device).item() < self.cutmix_prob
+        if use_cutmix and x.size(0) > 1:
+            indices = torch.randperm(x.size(0), device=x.device)
+            y_a, y_b = y, y[indices]
+            lam = torch.distributions.Beta(self.cutmix_alpha, self.cutmix_alpha).sample().item()
+            bbx1, bby1, bbx2, bby2 = self._rand_bbox(x.size(3), x.size(2), lam)
+            x[:, :, bby1:bby2, bbx1:bbx2] = x[indices, :, bby1:bby2, bbx1:bbx2]
+            lam = 1.0 - ((bbx2 - bbx1) * (bby2 - bby1)) / (x.size(2) * x.size(3))
+            logits = self.forward(x)
+            loss = self.criterion(logits, y_a) * lam + self.criterion(logits, y_b) * (1.0 - lam)
+        else:
+            # MixUp fallback if enabled
+            if self.training and self.mixup_alpha > 0.0 and x.size(0) > 1:
+                lam = torch.distributions.Beta(self.mixup_alpha, self.mixup_alpha).sample().item()
+                indices = torch.randperm(x.size(0), device=x.device)
+                mixed_x = lam * x + (1.0 - lam) * x[indices]
+                y_a, y_b = y, y[indices]
+                logits = self.forward(mixed_x)
+                loss = self.criterion(logits, y_a) * lam + self.criterion(logits, y_b) * (1.0 - lam)
+            else:
+                logits = self.forward(x)
+                loss = self.criterion(logits, y)
         
         # Update accuracy metric (for epoch-level aggregation)
         self.train_accuracy(logits, y)
@@ -168,6 +203,18 @@ class ImageNetLightningModule(LightningModule):
         self.log('train_acc', self.train_accuracy, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         
         return loss
+
+    def _rand_bbox(self, width: int, height: int, lam: float):
+        cut_ratio = (1.0 - lam) ** 0.5
+        cut_w = int(width * cut_ratio)
+        cut_h = int(height * cut_ratio)
+        cx = torch.randint(0, width, (1,)).item()
+        cy = torch.randint(0, height, (1,)).item()
+        x1 = max(cx - cut_w // 2, 0)
+        y1 = max(cy - cut_h // 2, 0)
+        x2 = min(cx + cut_w // 2, width)
+        y2 = min(cy + cut_h // 2, height)
+        return x1, y1, x2, y2
     
     def validation_step(self, batch, batch_idx):
         x, y = batch

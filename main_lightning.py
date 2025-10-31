@@ -100,6 +100,12 @@ def parse_args():
     parser.add_argument("--accumulate_grad_batches", type=int, default=1, 
                        help="Number of batches to accumulate before optimizer step (effective batch size = batch_size × accumulate_grad_batches × num_gpus)")
     
+    # Augmentation (batch-level)
+    parser.add_argument("--cutmix_prob", type=float, default=0.0, help="Probability to apply CutMix per batch")
+    parser.add_argument("--cutmix_alpha", type=float, default=1.0, help="Beta distribution alpha for CutMix")
+    parser.add_argument("--mixup_alpha", type=float, default=0.0, help="Beta distribution alpha for MixUp (0 to disable)")
+    parser.add_argument("--random_erasing_p", type=float, default=0.0, help="Random Erasing probability applied on training tensors (0 to disable)")
+    
     # Device arguments
     parser.add_argument("--devices", type=int, default=None, help="Number of GPUs (None = auto-detect all)")
     parser.add_argument("--use_multi_gpu", action="store_true", help="Force use of all available GPUs (same as --devices with auto-detect)")
@@ -268,6 +274,11 @@ def main():
             epochs=args.epochs,
             label_smoothing=args.label_smoothing,
             max_grad_norm=args.max_grad_norm,
+            scheduler_config=None,
+            cutmix_prob=args.cutmix_prob,
+            cutmix_alpha=args.cutmix_alpha,
+            mixup_alpha=args.mixup_alpha,
+            random_erasing_p=args.random_erasing_p,
         )
         
         # Compile model for PyTorch 2.x speedup (20-30% faster)

@@ -1,0 +1,10 @@
+uv run python main_lightning.py \
+  --data_dir ../data \
+  --batch_size 256 \
+  --epochs 100 \
+  --lr 0.3 \
+  --num_workers 8 \
+  --prefetch_factor 4 \
+  --accumulate_grad_batches 2 \
+  --devices 4 \
+  --resume_from ./checkpoints/last-v2.ckpt

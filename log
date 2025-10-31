@@ -1,0 +1,79 @@
+CUDA available: 8 GPU(s) detected
+  GPU 0: Tesla T4
+  GPU 1: Tesla T4
+  GPU 2: Tesla T4
+  GPU 3: Tesla T4
+  GPU 4: Tesla T4
+  GPU 5: Tesla T4
+  GPU 6: Tesla T4
+  GPU 7: Tesla T4
+Configuring trainer to use GPUs: [0, 1, 2, 3, 4, 5, 6, 7]
+Final configuration: using 8 device(s)
+DEBUG DataModule: max_samples_per_class = None
+Loaded 1281167 samples from ../data/train
+Number of classes: 1000
+DEBUG DataModule: After creating train_dataset, max_samples_per_class = None
+Loaded 52600 samples from ../data/val
+Number of classes: 1000
+DataModule setup complete: 1000 classes
+Training samples: 1281167
+Validation samples: 52600
+
+DataLoader Optimization:
+  num_workers: 24 (recommended: 4-16 based on CPU cores)
+  pin_memory: True (faster GPU transfer)
+  prefetch_factor: 4 (batches prefetched per worker)
+  persistent_workers: True (keep workers alive between epochs)
+  DistributedSampler: Enabled automatically by Lightning for DDP
+    - Each GPU sees unique, non-overlapping batches
+Dataset: ImageNet (1000 classes)
+torch.compile() disabled for multi-GPU training (not compatible with DDP)
+TensorBoard logs will be saved to: /mnt/data/ImageNetClassifier/logs/imagenet_resnet50/version_20251077
+View with: tensorboard --logdir /mnt/data/ImageNetClassifier/logs/
+Mixed Precision Training (FP16/BF16) enabled via torch.cuda.amp
+  - Reduces memory usage → allows larger batch sizes → faster training
+Multi-GPU detected: Using DDP Spawn strategy with 8 GPUs
+  Devices: 8, Accelerator: gpu
+  Strategy: 'ddp_spawn' (PyTorch Lightning will spawn 8 processes, one per GPU)
+
+Batch Size Configuration:
+  Per-GPU batch size: 256
+  Gradient accumulation: 2 batches
+  Number of GPUs: 8
+  Effective batch size: 4096 (batch_size × accumulate_grad_batches × num_gpus)
+
+Trainer Configuration:
+  Accelerator: gpu
+  Devices: 8
+  Strategy: ddp_spawn
+  Precision: 16-mixed
+    → Using torch.cuda.amp for automatic mixed precision
+    → Memory efficient: enables larger batch sizes
+  Gradient accumulation: 2 batches
+  Gradient clipping: 1.0 (norm)
+
+Trainer Created Successfully:
+  Number of devices: 8
+  Strategy: DDPStrategy
+  Strategy class: DDPStrategy
+  World size: 8
+  PyTorch Lightning version: 2.5.5
+
+⚠️  IMPORTANT: With DDP and 8 devices, PyTorch Lightning will spawn 8 processes.
+   You should see 8 Python processes in nvidia-smi once training starts.
+   If you only see 1 process, there may be a configuration issue.
+
+======================================================================
+STARTING TRAINING
+======================================================================
+Model: ResNet-50
+Classes: 1000
+Batch size per GPU: 256
+Total batch size: 2048
+Learning rate: 0.300000
+Scheduler: onecycle
+Epochs: 100
+Precision: 16-mixed
+Strategy: ddp_spawn
+======================================================================
+

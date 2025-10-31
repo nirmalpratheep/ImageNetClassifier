@@ -151,12 +151,12 @@ EVALUATION RESULTS
 
 📊 Model Performance:
   Validation Loss:  1.2345
-  Top-1 Accuracy:   75.23%
-  Top-5 Accuracy:   92.45%
+  Top-1 Accuracy:   77.4%
+  Top-5 Accuracy:   93.35%
 
 📁 Checkpoint Info:
-  Epoch:             99
-  Best Val Acc:      75.23%
+  Epoch:             80
+  Best Val Acc:      77.4%
 ```
 
 ## 📊 Performance Profiling

@@ -22,4 +22,7 @@ dependencies = [
     "sckit>=0.0.5",
     "pytorch-lightning>=2.5.5",
     "tensorboard>=2.20.0",
+    "gradio>=5.49.1",
+    "torchmetrics>=1.8.2",
+    "pip>=25.3",
 ]

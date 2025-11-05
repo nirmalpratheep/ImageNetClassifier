@@ -4,6 +4,53 @@
 
 A highly optimized PyTorch Lightning implementation for training ResNet-50 on ImageNet-1K with automatic learning rate finding, multi-GPU support, and comprehensive performance optimizations. This implementation successfully achieved **77.4% Top-1 accuracy** and **93.35% Top-5 accuracy** on the ImageNet-1K validation set.
 
+## 📑 Table of Contents
+
+- [🚀 Key Features](#-key-features)
+- [📋 Performance Optimizations](#-performance-optimizations)
+  - [Data Loading Optimizations](#data-loading-optimizations)
+  - [GPU & Memory Optimizations](#gpu--memory-optimizations)
+  - [Data Augmentation Optimizations](#data-augmentation-optimizations)
+- [📦 Installation](#-installation)
+- [🔧 Usage](#-usage)
+  - [Learning Rate Finder](#1-learning-rate-finder)
+  - [Training with Optimal Settings](#2-training-with-optimal-settings)
+  - [Resume Training](#3-resume-training)
+- [🔍 Inference and Evaluation](#-inference-and-evaluation)
+- [📊 Performance Profiling](#-performance-profiling)
+- [📈 Monitoring Training](#-monitoring-training)
+  - [TensorBoard](#tensorboard)
+  - [Check GPU Utilization](#check-gpu-utilization)
+- [📊 Training Results & Visualizations](#-training-results--visualizations)
+  - [Training Metrics](#training-metrics)
+  - [Learning Rate Schedule](#learning-rate-schedule)
+- [📁 Data Structure](#-data-structure)
+- [🎯 Key Arguments](#-key-arguments)
+  - [Training Configuration](#training-configuration)
+  - [Data Loading (Optimized)](#data-loading-optimized)
+  - [Multi-GPU](#multi-gpu)
+  - [Augmentation](#augmentation)
+  - [Precision & Performance](#precision--performance)
+  - [Logging & Checkpoints](#logging--checkpoints)
+  - [LR Finder](#lr-finder)
+- [📂 Output Structure](#-output-structure)
+- [🔍 Troubleshooting](#-troubleshooting)
+  - [Diagnosing GPU Stalls Between Batches: A Case Study](#diagnosing-gpu-stalls-between-batches-a-case-study)
+  - [GPU Stalls / Low GPU Utilization](#gpu-stalls--low-gpu-utilization)
+  - [Out of Memory (OOM)](#out-of-memory-oom)
+  - [High I/O Wait](#high-io-wait)
+  - [Training Too Slow](#training-too-slow)
+- [🎓 Training Tips](#-training-tips)
+  - [Achieving High Accuracy (77.4% Top-1 Achieved)](#achieving-high-accuracy-774-top-1-achieved)
+  - [Recommended Training Schedule](#recommended-training-schedule)
+- [📊 Performance Benchmarks](#-performance-benchmarks)
+- [🛠️ Technical Details](#️-technical-details)
+  - [Optimizations Implemented](#optimizations-implemented)
+  - [Architecture](#architecture)
+  - [Learning Rate Schedule](#learning-rate-schedule-1)
+- [📝 License](#-license)
+- [🙏 Acknowledgments](#-acknowledgments)
+
 ## 🚀 Key Features
 
 - ✅ **Optimized Training Pipeline**: Multiple performance optimizations for faster training
@@ -13,6 +60,7 @@ A highly optimized PyTorch Lightning implementation for training ResNet-50 on Im
 - ✅ **TensorBoard Integration**: Automatic logging of all metrics
 - ✅ **Performance Profiler**: Built-in tool to diagnose GPU stalls and bottlenecks
 - ✅ **Advanced Data Augmentation**: CutMix, MixUp, and Random Erasing support
+- ✅ **Web Interface**: Simple Gradio app for interactive image classification
 
 ## 📋 Performance Optimizations
 
@@ -115,6 +163,44 @@ python main_lightning.py \
 ```
 
 ## 🔍 Inference and Evaluation
+
+### Web Interface (Gradio)
+
+Run a simple web interface for image classification:
+
+```bash
+python app.py
+```
+
+This will launch a Gradio web interface where you can:
+- Upload images for classification
+- Get top-5 predictions with confidence scores
+- View detailed results with visual bars
+
+The app will automatically load the model from:
+- `./last-v2.ckpt` (primary checkpoint)
+- `./last-v2.pth` (fallback)
+- `./snapshots/resnet50_epoch_*.pth` (additional fallback)
+- Random initialization if no checkpoint found
+
+**Features:**
+- Simple, clean UI for image classification
+- Real-time predictions on uploaded images
+- Top-5 class predictions with confidence scores
+- Model information and performance metrics
+- Example images gallery (if `examples/` folder exists)
+
+**Adding Example Images:**
+To add sample images for testing, create an `examples/` folder in the project root and add up to 20 sample images:
+```bash
+mkdir examples
+# Copy sample images from various ImageNet categories
+cp path/to/sample_images/*.jpg examples/
+```
+
+The app will automatically detect and display up to 20 images from the `examples/` directory as clickable examples.
+
+### Batch Evaluation
 
 Evaluate a trained model checkpoint and generate training curve plots:
 
@@ -340,6 +426,7 @@ After training, you'll have:
 ├── checkpoints/
 │   ├── epoch=99-val_acc=0.7500-val_loss=1.2345.ckpt  # Top checkpoints
 │   └── last.ckpt                                      # Latest checkpoint
+├── last-v2.pth                                        # Model checkpoint for app.py
 ├── logs/
 │   └── imagenet_resnet50/
 │       └── version_YYYYMMDD_HHMMSS/
@@ -348,6 +435,11 @@ After training, you'll have:
 ├── inference_output/                  # Inference results (after running inference.py)
 │   ├── training_curves.png            # Training curve plots
 │   └── evaluation_results.json        # Detailed evaluation metrics
+├── examples/                          # Sample images for app.py (optional)
+│   ├── image1.jpg                     # Example images for testing
+│   ├── image2.jpg
+│   └── ... (up to 20 images)
+├── app.py                             # Gradio web interface for image classification
 ├── lr_finder_plot.png                 # LR finder plot
 └── profile_report.txt                 # Performance profile (if generated)
 ```

@@ -245,7 +245,7 @@ The following figures show the training progress and metrics captured from Tenso
 
 ### Learning Rate Schedule
 
-<img src="onecyclelr.png" width="800">
+<img src="OnecycleLR.png" width="800">
 
 *Three-phase OneCycle learning rate schedule: warmup (40%), cooldown (40%), and annealing (20%)*
 

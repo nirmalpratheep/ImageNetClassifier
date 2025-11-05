@@ -8,46 +8,19 @@ A highly optimized PyTorch Lightning implementation for training ResNet-50 on Im
 
 - [🚀 Key Features](#-key-features)
 - [📋 Performance Optimizations](#-performance-optimizations)
-  - [Data Loading Optimizations](#data-loading-optimizations)
-  - [GPU & Memory Optimizations](#gpu--memory-optimizations)
-  - [Data Augmentation Optimizations](#data-augmentation-optimizations)
 - [📦 Installation](#-installation)
 - [🔧 Usage](#-usage)
-  - [Learning Rate Finder](#1-learning-rate-finder)
-  - [Training with Optimal Settings](#2-training-with-optimal-settings)
-  - [Resume Training](#3-resume-training)
 - [🔍 Inference and Evaluation](#-inference-and-evaluation)
 - [📊 Performance Profiling](#-performance-profiling)
 - [📈 Monitoring Training](#-monitoring-training)
-  - [TensorBoard](#tensorboard)
-  - [Check GPU Utilization](#check-gpu-utilization)
 - [📊 Training Results & Visualizations](#-training-results--visualizations)
-  - [Training Metrics](#training-metrics)
-  - [Learning Rate Schedule](#learning-rate-schedule)
 - [📁 Data Structure](#-data-structure)
 - [🎯 Key Arguments](#-key-arguments)
-  - [Training Configuration](#training-configuration)
-  - [Data Loading (Optimized)](#data-loading-optimized)
-  - [Multi-GPU](#multi-gpu)
-  - [Augmentation](#augmentation)
-  - [Precision & Performance](#precision--performance)
-  - [Logging & Checkpoints](#logging--checkpoints)
-  - [LR Finder](#lr-finder)
 - [📂 Output Structure](#-output-structure)
 - [🔍 Troubleshooting](#-troubleshooting)
-  - [Diagnosing GPU Stalls Between Batches: A Case Study](#diagnosing-gpu-stalls-between-batches-a-case-study)
-  - [GPU Stalls / Low GPU Utilization](#gpu-stalls--low-gpu-utilization)
-  - [Out of Memory (OOM)](#out-of-memory-oom)
-  - [High I/O Wait](#high-io-wait)
-  - [Training Too Slow](#training-too-slow)
 - [🎓 Training Tips](#-training-tips)
-  - [Achieving High Accuracy (77.4% Top-1 Achieved)](#achieving-high-accuracy-774-top-1-achieved)
-  - [Recommended Training Schedule](#recommended-training-schedule)
 - [📊 Performance Benchmarks](#-performance-benchmarks)
 - [🛠️ Technical Details](#️-technical-details)
-  - [Optimizations Implemented](#optimizations-implemented)
-  - [Architecture](#architecture)
-  - [Learning Rate Schedule](#learning-rate-schedule-1)
 - [📝 License](#-license)
 - [🙏 Acknowledgments](#-acknowledgments)
 
@@ -320,18 +293,18 @@ The following figures show the training progress and metrics captured from Tenso
 
 <table>
 <tr>
-<td align="center"><b>Training Accuracy</b><br><img src="trainacc.jpg" width="400"></td>
-<td align="center"><b>Training Loss</b><br><img src="Trainloss.png" width="400"></td>
+<td align="center"><b>Training Accuracy</b><br><img src="plots/trainacc.jpg" width="400"></td>
+<td align="center"><b>Training Loss</b><br><img src="plots/Trainloss.png" width="400"></td>
 </tr>
 <tr>
-<td align="center"><b>Validation Accuracy</b><br><img src="valacc.png" width="400"></td>
-<td align="center"><b>Validation Loss</b><br><img src="valloss.png" width="400"></td>
+<td align="center"><b>Validation Accuracy</b><br><img src="plots/valacc.png" width="400"></td>
+<td align="center"><b>Validation Loss</b><br><img src="plots/valloss.png" width="400"></td>
 </tr>
 </table>
 
 ### Learning Rate Schedule
 
-<img src="OnecycleLR.png" width="800">
+<img src="plots/OnecycleLR.png" width="800">
 
 *Three-phase OneCycle learning rate schedule: warmup (40%), cooldown (40%), and annealing (20%)*
 

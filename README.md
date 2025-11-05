@@ -1,8 +1,8 @@
 # ImageNet-1K Classification with ResNet-50
 
-**Goal: Achieve 75% Top-1 accuracy on ImageNet-1K validation set**
+**🎯 Achieved: 77.4% Top-1 accuracy on ImageNet-1K validation set** ✅
 
-A highly optimized PyTorch Lightning implementation for training ResNet-50 on ImageNet-1K with automatic learning rate finding, multi-GPU support, and comprehensive performance optimizations.
+A highly optimized PyTorch Lightning implementation for training ResNet-50 on ImageNet-1K with automatic learning rate finding, multi-GPU support, and comprehensive performance optimizations. This implementation successfully achieved **77.4% Top-1 accuracy** and **93.35% Top-5 accuracy** on the ImageNet-1K validation set.
 
 ## 🚀 Key Features
 
@@ -224,6 +224,40 @@ nvidia-smi dmon -s pucvmt -d 1
 - Memory utilization: 75-90% is typical
 - I/O wait should be < 5% (check with `top` or profiler)
 
+## 📊 Training Results & Visualizations
+
+The following figures show the training progress and metrics captured from TensorBoard during training:
+
+<div align="center">
+
+### Training Metrics
+
+<table>
+<tr>
+<td align="center"><b>Training Accuracy</b><br><img src="trainacc.jpg" width="400"></td>
+<td align="center"><b>Training Loss</b><br><img src="Trainloss.png" width="400"></td>
+</tr>
+<tr>
+<td align="center"><b>Validation Accuracy</b><br><img src="valacc.png" width="400"></td>
+<td align="center"><b>Validation Loss</b><br><img src="valloss.png" width="400"></td>
+</tr>
+</table>
+
+### Learning Rate Schedule
+
+<img src="onecyclelr.png" width="800">
+
+*Three-phase OneCycle learning rate schedule: warmup (40%), cooldown (40%), and annealing (20%)*
+
+</div>
+
+**Key Insights from the Training Curves:**
+- **Training Accuracy**: Shows steady improvement over epochs with proper convergence
+- **Training Loss**: Decreasing loss indicates the model is learning effectively
+- **Validation Accuracy**: Tracks model generalization performance on unseen data
+- **Validation Loss**: Helps identify overfitting if validation loss stops decreasing
+- **Learning Rate Schedule**: OneCycle LR policy with three distinct phases for optimal convergence
+
 ## 📁 Data Structure
 
 Your ImageNet-1K data should be organized as:
@@ -320,6 +354,99 @@ After training, you'll have:
 
 ## 🔍 Troubleshooting
 
+### Diagnosing GPU Stalls Between Batches: A Case Study
+
+We used `nvidia-smi dmon` data to diagnose and fix GPU stalls that were occurring between batches. Here's how we identified and resolved the issue:
+
+#### Step 1: Collecting GPU Performance Data
+
+We monitored GPU performance during training using:
+
+```bash
+nvidia-smi dmon -s pucvmt -d 1 > Nvidia-stall-data.txt
+```
+
+This captures real-time GPU metrics including:
+- **SM (Streaming Multiprocessor) utilization %** - Shows GPU compute usage
+- **Memory utilization %** - GPU memory usage
+- **rxpci/txpci (MB/s)** - PCIe bandwidth (receiving/transmitting data)
+
+#### Step 2: Analyzing the Data
+
+By examining `Nvidia-stall-data.txt`, we identified several issues:
+
+1. **High PCIe Utilization**: The `rxpci` and `txpci` columns showed very high values (e.g., 2145 MB/s, 3060 MB/s), indicating excessive data transfer over PCIe
+2. **Variable SM Utilization**: GPU utilization varied widely (53-100%), suggesting the GPU was waiting for data
+3. **Memory Stalls**: Memory utilization dropped significantly during stalls (e.g., from 99% to 33%)
+
+**Key Observations from the Data:**
+```
+# Example problematic pattern (from Nvidia-stall-data.txt):
+# High PCIe traffic while GPU utilization drops
+    0     63     48      -    100     99      0      0      0      0   5000   1440    100      0  14123      5      0   2532     94
+    4     66     47      -     65     48      0      0      0      0   5000   1170    100      0  14123      5      0     23      5
+```
+Notice GPU 4's SM utilization drops from 100% to 65% and memory from 99% to 48%, indicating a data loading bottleneck.
+
+#### Step 3: Root Cause Analysis
+
+The high PCIe utilization revealed the root cause: **data was being loaded from remote storage (S3 bucket)**, requiring:
+- Network I/O to fetch images from S3
+- PCIe transfers to move data to GPU memory
+- This created a bottleneck where GPUs were idle waiting for data
+
+#### Step 4: Solutions Implemented
+
+We implemented a multi-step optimization process:
+
+**Phase 1: Optimize Data Loading Configuration**
+1. **Increased DataLoader Workers**: Found the optimal number of workers for our CPU (6-8 workers per GPU)
+   - Too few workers = GPU waits for data
+   - Too many workers = CPU contention and overhead
+   - Sweet spot: 6-8 workers per GPU for 96 CPU cores with 8 GPUs
+
+2. **Enabled Pin Memory**: Added `pin_memory=True` to DataLoader
+   - Enables faster CPU→GPU data transfer
+   - Uses pinned (page-locked) memory for asynchronous transfers
+
+3. **Increased Prefetch Factor**: Set `prefetch_factor=4`
+   - Buffers multiple batches ahead of time
+   - Prevents GPU stalls when data loading is slightly slower
+
+**Phase 2: Optimize Storage Location**
+
+**Initial State: S3 Bucket**
+- ❌ High PCIe utilization (2000+ MB/s)
+- ❌ Slow epoch speed (long training times)
+- ❌ GPU stalls between batches (waiting for network I/O)
+
+**Step 1: Move to EBS Volume**
+- ✅ Reduced PCIe utilization significantly
+- ✅ Improved epoch speed by ~30-40%
+- ⚠️ Still some PCIe overhead from EBS→instance transfer
+
+**Step 2: Move to Root Volume**
+- ✅ Minimal PCIe utilization (< 100 MB/s for local transfers)
+- ✅ Maximum epoch speed improvement
+- ✅ Consistent GPU utilization (95-100% with minimal variance)
+- ✅ Eliminated GPU stalls between batches
+
+#### Results
+
+After implementing all optimizations:
+- **GPU Utilization**: Stabilized at 96-97% (minimal variance)
+- **PCIe Utilization**: Reduced from 2000+ MB/s to < 100 MB/s
+- **Training Speed**: Significantly improved epoch completion time
+- **No GPU Stalls**: Consistent utilization across all GPUs
+
+#### Key Takeaways
+
+1. **Monitor PCIe utilization** to identify storage bottlenecks
+2. **Storage location matters**: Local storage (root volume) > EBS > S3 for training datasets
+3. **Optimize worker count** based on CPU cores and GPUs
+4. **Use pin_memory** for faster CPU→GPU transfers
+5. **Prefetch batches** to keep GPU fed with data
+
 ### GPU Stalls / Low GPU Utilization
 
 **Symptoms:** GPU utilization varies widely (e.g., 60-100%), training is slow
@@ -329,8 +456,12 @@ After training, you'll have:
 2. **Increase prefetch**: `--prefetch_factor 2` → `--prefetch_factor 4`
 3. **Check I/O**: Use profiler to check if data loading is bottleneck
 4. **Enable pin_memory**: Already enabled by default
+5. **Move data to local storage**: If data is on S3/EBS, copy to root volume for best performance
 
 ```bash
+# Monitor GPU performance
+nvidia-smi dmon -s pucvmt -d 1 > gpu_performance.log
+
 # Run profiler to diagnose
 python training_profiler.py --duration 30
 ```
@@ -344,12 +475,16 @@ python training_profiler.py --duration 30
 
 ### High I/O Wait
 
-**Symptoms:** `top` shows high `wa` (I/O wait) percentage (> 20%)
+**Symptoms:** `top` shows high `wa` (I/O wait) percentage (> 20%), high PCIe utilization in nvidia-smi
 
 **Solutions:**
-1. Reduce workers: Too many workers competing for disk
-2. Use faster storage: NVMe SSD recommended
-3. Cache dataset: Pre-load images into memory if possible
+1. **Move data to local storage**: See case study above - S3 → EBS → Root volume migration
+2. **Use faster storage**: NVMe SSD recommended (root volume typically fastest)
+3. **Optimize workers**: Too many workers competing for disk, too few = GPU waits
+4. **Cache dataset**: Pre-load images into memory if possible
+5. **Monitor PCIe**: Use `nvidia-smi dmon` to check if storage is bottleneck
+
+**See the detailed case study above** for how we used nvidia-smi data to diagnose and fix I/O bottlenecks.
 
 ### Training Too Slow
 
@@ -363,7 +498,7 @@ python training_profiler.py --duration 30
 
 ## 🎓 Training Tips
 
-### Achieving 75% Top-1 Accuracy
+### Achieving High Accuracy (77.4% Top-1 Achieved)
 
 1. **Use full ImageNet dataset** (1.28M training images)
 2. **Train for 100+ epochs** with proper LR schedule
@@ -400,6 +535,9 @@ python main_lightning.py \
 
 With optimized settings on 8× Tesla T4 GPUs (96 CPU cores):
 
+- **Model Accuracy**: 
+  - **Top-1 Accuracy**: 77.4% ✅
+  - **Top-5 Accuracy**: 93.35%
 - **GPU Utilization**: 96-97% average (minimal stalls)
 - **CPU Utilization**: ~23% (plenty of headroom)
 - **Throughput**: ~800-1000 images/second per GPU
